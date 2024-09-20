@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"time"
 	"context"
+	"encoding/json"
 
 	"github.com/braydonf/strfry-wot"
 	"github.com/knadh/koanf/parsers/yaml"
@@ -20,6 +21,17 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
+type StrFryStream struct {
+	Direction string `json:"dir"`
+	PluginDown string `json:"pluginDown,omitempty"`
+	PluginUp string `json:"pluginUp,omitempty"`
+	Relays []string `json:"urls"`
+}
+
+type StrFryRouter struct {
+	Streams map[string]StrFryStream `json:"streams"`
+}
+
 var (
 	knf = koanf.New(".")
 	crn = cron.New(cron.WithSeconds())
@@ -31,9 +43,14 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
-func getRelayListMetadata(ctx context.Context, pubkey string, relays []string) (*nostr.Event, error) {
+func getLatestKind(
+	ctx context.Context,
+	pubkey string,
+	kind int,
+	relays []string) *nostr.Event {
+
 	filters := []nostr.Filter{{
-		Kinds:   []int{nostr.KindRelayListMetadata},
+		Kinds:   []int{kind},
 		Authors: []string{pubkey},
 		Limit:   1,
 	}}
@@ -87,7 +104,7 @@ func getRelayListMetadata(ctx context.Context, pubkey string, relays []string) (
 
 	close(results)
 
-	return latest, nil
+	return latest
 }
 
 func main() {
@@ -153,34 +170,92 @@ func main() {
 	// Now do Nostr stuff.
 	ctx := context.Background()
 
-	updateMeta := func() {
-		// Collect the relays for each user.
+	updateUser := func() {
 		relays := cfg.AuthorMetadataRelays
+
+		var router StrFryRouter
+
+		router.Streams = make(map[string]StrFryStream)
+
+		up := StrFryStream{
+			Direction: "up",
+			Relays: make([]string, 0, 20),
+		}
+
+		down := StrFryStream{
+			Direction: "down",
+			PluginDown: "/usr/bin/strfry-writepolicy",
+			Relays: make([]string, 0, 20),
+		}
+
+		both := StrFryStream{
+			Direction: "both",
+			PluginDown: "/usr/bin/strfry-writepolicy",
+			Relays: make([]string, 0, 20),
+		}
 
 		for _, user := range cfg.AuthorWotUsers {
 			pubkey := user.PubKey
-			meta, err := getRelayListMetadata(ctx, pubkey, relays)
-			if err != nil {
-				log.Warn().Err(err).Msg("error getting relay list metadata: %v")
-				continue
+
+			meta := getLatestKind(ctx, pubkey, nostr.KindRelayListMetadata, relays)
+
+			if meta != nil {
+				for _, tag := range meta.Tags.GetAll([]string{"r"}) {
+					if len(tag) < 2 {
+						log.Warn().Msg("unexpected r tag")
+						continue
+					}
+
+					if user.Direction == "down" {
+						down.Relays = append(down.Relays, tag[1])
+					} else if user.Direction == "up" {
+						up.Relays = append(up.Relays, tag[1])
+					} else if user.Direction == "both" {
+						both.Relays = append(both.Relays, tag[1])
+					} else {
+						log.Warn().Str("unrecognized dir", user.Direction)
+					}
+				}
 			}
 
-			fmt.Printf("pubkey: %s, meta: %s\n", pubkey, meta)
+			follows := getLatestKind(ctx, pubkey, nostr.KindContactList, relays)
+
+			// Create a config for writepolicy plugin for all of
+			// the public keys followed.
+
+			if follows != nil {
+				fmt.Printf("pubkey: %s, follows: %s\n", pubkey, follows)
+			}
 		}
+
+		router.Streams["wotup"] = up
+		router.Streams["wotdown"] = down
+		router.Streams["wotboth"] = both
+
+		// Make the configuration file for the strfry
+		// router. For more information, visit:
+		// https://github.com/hoytech/strfry/blob/master/docs/router.md
+		// https://github.com/taocpp/config/blob/main/doc/Writing-Config-Files.md
+		conf, err := json.MarshalIndent(router, "", "  ")
+
+		if err != nil {
+			fmt.Errorf("marshal error: %s", err)
+		} else {
+			fmt.Println(string(conf))
+		}
+
+		// Save this config to a configured location.
+		// Save the write policy config.
 	}
 
-	updateMeta()
+	updateUser()
 
-	crn.AddFunc("@every 45s", updateMeta)
+	crn.AddFunc("@every 10m", updateUser)
 	crn.Start()
 
 	<-done
 
-	// Combine all relays.
-
-	// Configure strfry router with the config file for
-	// all of the relays. Run this periodically to update
-	// the relays.
+	crn.Stop()
 
 	// Periodically run and sync for all users using
 	// strfry negentropy. Also run this at start as in
