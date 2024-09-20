@@ -9,6 +9,7 @@ import (
 	"time"
 	"context"
 	"encoding/json"
+	"sync"
 
 	"github.com/braydonf/strfry-wot"
 	"github.com/knadh/koanf/parsers/yaml"
@@ -25,6 +26,25 @@ import (
 // StryFry down/write plugin config.
 type StrFryDownPlugin struct {
 	AuthorAllow []string `json:"author-allow"`
+	authorAllowMap map[string]bool
+	authorAllowMutex sync.RWMutex
+}
+
+func (g *StrFryDownPlugin) hasAuthorAllow(pubkey string) bool {
+	if _, ok := g.authorAllowMap[pubkey]; ok {
+		return true
+	} else {
+		g.authorAllowMap[pubkey] = true
+		return false
+	}
+}
+
+func (g *StrFryDownPlugin) AppendUnique(pubkey string) {
+	g.authorAllowMutex.Lock()
+	defer g.authorAllowMutex.Unlock()
+	if !g.hasAuthorAllow(pubkey) {
+		g.AuthorAllow = append(g.AuthorAllow, pubkey)
+	}
 }
 
 // StrFry router config.
@@ -35,6 +55,25 @@ type StrFryStream struct {
 	PluginDown string `json:"pluginDown,omitempty"`
 	PluginUp string `json:"pluginUp,omitempty"`
 	Relays []string `json:"urls"`
+	relaysMap map[string]bool
+	relaysMutex sync.RWMutex
+}
+
+func (g *StrFryStream) hasRelay(relay string) bool {
+	if _, ok := g.relaysMap[relay]; ok {
+		return true
+	} else {
+		g.relaysMap[relay] = true
+		return false
+	}
+}
+
+func (g *StrFryStream) AppendUnique(relay string) {
+	g.relaysMutex.Lock()
+	defer g.relaysMutex.Unlock()
+	if !g.hasRelay(relay) {
+		g.Relays = append(g.Relays, relay)
+	}
 }
 
 type StrFryRouter struct {
@@ -87,9 +126,16 @@ func getLatestKind(
 
 			defer sub.Unsub()
 
+			count := 0
+
 			for evt := range sub.Events {
 				results <- evt
+				count++
 				break
+			}
+
+			if count == 0 {
+				results <- nil
 			}
 		}()
 	}
@@ -98,6 +144,10 @@ func getLatestKind(
 	var count int = 0
 
 	for res := range results {
+		if res == nil {
+			break
+		}
+
 		if latest != nil && res.CreatedAt > latest.CreatedAt {
 			latest = res
 		} else {
@@ -111,10 +161,109 @@ func getLatestKind(
 		}
 	}
 
-	close(results)
-
 	return latest
 }
+
+func getUsersInfo(
+	ctx context.Context,
+	users []wot.User,
+	up *StrFryStream,
+	down *StrFryStream,
+	both *StrFryStream,
+	plugin *StrFryDownPlugin,
+	relays []string) {
+
+	completed := 0
+	total := len(users)
+	done := make(chan bool, total)
+
+	for _, user := range users {
+		go func() {
+			pubkey := user.PubKey
+
+			log.Info().Str("user", user.PubKey).Int("depth", user.Depth).Msg("starting...")
+
+			meta := getLatestKind(ctx, pubkey, nostr.KindRelayListMetadata, relays)
+
+			if meta != nil {
+				for _, tag := range meta.Tags.GetAll([]string{"r"}) {
+					if len(tag) < 2 {
+						log.Warn().Msg("unexpected r tag")
+						continue
+					}
+
+					if user.Direction == "down" {
+						down.AppendUnique(tag[1])
+					} else if user.Direction == "up" {
+						up.AppendUnique(tag[1])
+					} else if user.Direction == "both" {
+						both.AppendUnique(tag[1])
+					} else {
+						log.Warn().Str("unrecognized dir", user.Direction)
+					}
+				}
+			}
+
+			follows := getLatestKind(ctx, pubkey, nostr.KindContactList, relays)
+
+			// Create a config for writepolicy plugin for all of
+			// the public keys followed.
+
+			if follows != nil {
+				ptags := follows.Tags.GetAll([]string{"p"})
+				nextUsers := make([]wot.User, 0, len(ptags))
+				nextDepth := user.Depth - 1
+
+				for _, tag := range ptags {
+					if len(tag) < 2 {
+						log.Warn().Msg("unexpected p tag")
+						continue
+					}
+
+					hex := tag[1]
+					if nostr.IsValidPublicKeyHex(hex) {
+						if user.Direction == "down" || user.Direction == "both" {
+							plugin.AppendUnique(hex)
+
+							if nextDepth > 0 {
+								nextUsers = append(nextUsers, wot.User{
+									PubKey: hex,
+									Depth: user.Depth - 1,
+									Direction: user.Direction,
+								})
+							}
+
+						} else if user.Direction != "up" {
+							log.Warn().Str("unrecognized dir", user.Direction)
+						}
+					} else {
+						log.Warn().Str("invalid pubkey: %s", hex)
+					}
+				}
+
+				if nextDepth > 0 {
+					getUsersInfo(ctx, nextUsers, up, down, both, plugin, relays)
+				}
+			}
+
+			log.Info().Str("user", user.PubKey).Msg("...ended")
+
+			done <- true
+		}()
+	}
+
+	for d := range done {
+		if d {
+			completed++
+			if completed >= total {
+				break
+			}
+		} else {
+			break
+		}
+	}
+}
+
 
 func main() {
 	// Setup signal monitoring and keep the process open.
@@ -179,82 +328,38 @@ func main() {
 	// Now do Nostr stuff.
 	ctx := context.Background()
 
-	updateUser := func() {
+	updateUsers := func() {
 		relays := cfg.AuthorMetadataRelays
 
 		var router StrFryRouter
-
 		router.Streams = make(map[string]StrFryStream)
 
 		up := StrFryStream{
 			Direction: "up",
 			Relays: make([]string, 0, 20),
+			relaysMap: make(map[string]bool),
 		}
 
 		down := StrFryStream{
 			Direction: "down",
 			PluginDown: "/usr/bin/strfry-writepolicy",
 			Relays: make([]string, 0, 20),
+			relaysMap: make(map[string]bool),
 		}
 
 		both := StrFryStream{
 			Direction: "both",
 			PluginDown: "/usr/bin/strfry-writepolicy",
 			Relays: make([]string, 0, 20),
+			relaysMap: make(map[string]bool),
 		}
 
-		var plugin StrFryDownPlugin
-		plugin.AuthorAllow = make([]string, 0, 1000)
-
-		for _, user := range cfg.AuthorWotUsers {
-			pubkey := user.PubKey
-
-			meta := getLatestKind(ctx, pubkey, nostr.KindRelayListMetadata, relays)
-
-			if meta != nil {
-				for _, tag := range meta.Tags.GetAll([]string{"r"}) {
-					if len(tag) < 2 {
-						log.Warn().Msg("unexpected r tag")
-						continue
-					}
-
-					if user.Direction == "down" {
-						down.Relays = append(down.Relays, tag[1])
-					} else if user.Direction == "up" {
-						up.Relays = append(up.Relays, tag[1])
-					} else if user.Direction == "both" {
-						both.Relays = append(both.Relays, tag[1])
-					} else {
-						log.Warn().Str("unrecognized dir", user.Direction)
-					}
-				}
-			}
-
-			follows := getLatestKind(ctx, pubkey, nostr.KindContactList, relays)
-
-			// Create a config for writepolicy plugin for all of
-			// the public keys followed.
-
-			if follows != nil {
-				for _, tag := range follows.Tags.GetAll([]string{"p"}) {
-					if len(tag) < 2 {
-						log.Warn().Msg("unexpected p tag")
-						continue
-					}
-
-					hex := tag[1]
-					if nostr.IsValidPublicKeyHex(hex) {
-						if user.Direction == "down" || user.Direction == "both" {
-							plugin.AuthorAllow = append(plugin.AuthorAllow, hex)
-						} else if user.Direction != "up" {
-							log.Warn().Str("unrecognized dir", user.Direction)
-						}
-					} else {
-						log.Warn().Str("invalid pubkey: %s", hex)
-					}
-				}
-			}
+		plugin := StrFryDownPlugin{
+			AuthorAllow: make([]string, 0, 1000),
+			authorAllowMap: make(map[string]bool),
 		}
+
+		getUsersInfo(ctx, cfg.AuthorWotUsers, &up, &down, &both, &plugin, relays)
 
 		router.Streams["wotup"] = up
 		router.Streams["wotdown"] = down
@@ -281,9 +386,9 @@ func main() {
 		// Save the write policy config.
 	}
 
-	updateUser()
+	updateUsers()
 
-	crn.AddFunc("@every 10m", updateUser)
+	crn.AddFunc("@every 10m", updateUsers)
 	crn.Start()
 
 	<-done
