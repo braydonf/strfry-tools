@@ -1,4 +1,24 @@
+log-level: "debug"
+
 author-whitelist:
   - "<32-byte-public-key-hex>"
   - "<32-byte-public-key-hex>"
+  - "<32-byte-public-key-hex>"
 
+author-metadata-relays:
+  - "wss://domain1.tld"
+  - "wss://domian2.tld"
+
+author-wot-users:
+  - name: "alice"
+    pubkey: "<32-byte-public-key-hex>"
+    depth: 1
+    dir: down
+  - name: "bob"
+    pubkey: "<32-byte-public-key-hex>"
+    depth: 2
+    dir: both
+  - name: "carol"
+    pubkey: "<32-byte-public-key-hex>"
+    depth: 1
+    dir: up
