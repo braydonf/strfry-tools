@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"math/rand"
 	"time"
 	"context"
@@ -14,13 +16,14 @@ import (
 	"github.com/knadh/koanf/v2"
 	"github.com/rs/zerolog"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/robfig/cron/v3"
 	flag "github.com/spf13/pflag"
 )
 
 var (
-	k = koanf.New(".")
+	knf = koanf.New(".")
+	crn = cron.New(cron.WithSeconds())
 	cfg wot.Config
-
 	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
 )
 
@@ -88,6 +91,19 @@ func getRelayListMetadata(ctx context.Context, pubkey string, relays []string) (
 }
 
 func main() {
+	// Setup signal monitoring and keep the process open.
+	signals := make(chan os.Signal, 1)
+	done := make(chan bool, 1)
+
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		s := <-signals
+		fmt.Println()
+		fmt.Println(s)
+		done <- true
+	}()
+
 	f := flag.NewFlagSet("conf", flag.ContinueOnError)
 	f.Usage = func() {
 		fmt.Println(f.FlagUsages())
@@ -101,18 +117,18 @@ func main() {
 	// Load the config files provided in the commandline.
 	cFiles, _ := f.GetStringSlice("conf")
 	for _, c := range cFiles {
-		if err := k.Load(file.Provider(c), yaml.Parser()); err != nil {
+		if err := knf.Load(file.Provider(c), yaml.Parser()); err != nil {
 			log.Fatal().Err(err).Msg("error loading file: %v")
 		}
 	}
 
 	// Override command over the config file.
-	if err := k.Load(posflag.Provider(f, ".", k), nil); err != nil {
+	if err := knf.Load(posflag.Provider(f, ".", knf), nil); err != nil {
 		log.Fatal().Err(err).Msg("error loading config: %v")
 	}
 
 	// Get the settings.
-	k.Unmarshal("", &cfg)
+	knf.Unmarshal("", &cfg)
 
 	// Set the log level.
 	if cfg.LogLevel == "panic" {
@@ -137,17 +153,28 @@ func main() {
 	// Now do Nostr stuff.
 	ctx := context.Background()
 
-	// Collect the relays for each user.
-	pubkey := cfg.AuthorWotUsers[0].PubKey
-	relays := cfg.AuthorMetadataRelays
+	updateMeta := func() {
+		// Collect the relays for each user.
+		relays := cfg.AuthorMetadataRelays
 
-	meta, err := getRelayListMetadata(ctx, pubkey, relays)
-	if err != nil {
-		fmt.Printf("%s\n", err)
-		return
+		for _, user := range cfg.AuthorWotUsers {
+			pubkey := user.PubKey
+			meta, err := getRelayListMetadata(ctx, pubkey, relays)
+			if err != nil {
+				log.Warn().Err(err).Msg("error getting relay list metadata: %v")
+				continue
+			}
+
+			fmt.Printf("pubkey: %s, meta: %s\n", pubkey, meta)
+		}
 	}
 
-	fmt.Printf("meta: %s\n", meta)
+	updateMeta()
+
+	crn.AddFunc("@every 45s", updateMeta)
+	crn.Start()
+
+	<-done
 
 	// Combine all relays.
 
