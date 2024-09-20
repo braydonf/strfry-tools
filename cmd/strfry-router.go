@@ -21,6 +21,15 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
+
+// StryFry down/write plugin config.
+type StrFryDownPlugin struct {
+	AuthorAllow []string `json:"author-allow"`
+}
+
+// StrFry router config.
+// - https://github.com/hoytech/strfry/blob/master/docs/router.md
+// - https://github.com/taocpp/config/blob/main/doc/Writing-Config-Files.md
 type StrFryStream struct {
 	Direction string `json:"dir"`
 	PluginDown string `json:"pluginDown,omitempty"`
@@ -194,6 +203,9 @@ func main() {
 			Relays: make([]string, 0, 20),
 		}
 
+		var plugin StrFryDownPlugin
+		plugin.AuthorAllow = make([]string, 0, 1000)
+
 		for _, user := range cfg.AuthorWotUsers {
 			pubkey := user.PubKey
 
@@ -224,7 +236,23 @@ func main() {
 			// the public keys followed.
 
 			if follows != nil {
-				fmt.Printf("pubkey: %s, follows: %s\n", pubkey, follows)
+				for _, tag := range follows.Tags.GetAll([]string{"p"}) {
+					if len(tag) < 2 {
+						log.Warn().Msg("unexpected p tag")
+						continue
+					}
+
+					hex := tag[1]
+					if nostr.IsValidPublicKeyHex(hex) {
+						if user.Direction == "down" || user.Direction == "both" {
+							plugin.AuthorAllow = append(plugin.AuthorAllow, hex)
+						} else if user.Direction != "up" {
+							log.Warn().Str("unrecognized dir", user.Direction)
+						}
+					} else {
+						log.Warn().Str("invalid pubkey: %s", hex)
+					}
+				}
 			}
 		}
 
@@ -232,16 +260,21 @@ func main() {
 		router.Streams["wotdown"] = down
 		router.Streams["wotboth"] = both
 
-		// Make the configuration file for the strfry
-		// router. For more information, visit:
-		// https://github.com/hoytech/strfry/blob/master/docs/router.md
-		// https://github.com/taocpp/config/blob/main/doc/Writing-Config-Files.md
 		conf, err := json.MarshalIndent(router, "", "  ")
 
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
 		} else {
 			fmt.Println(string(conf))
+		}
+
+
+		pluginConf, err := json.MarshalIndent(plugin, "", "  ")
+
+		if err != nil {
+			fmt.Errorf("marshal error: %s", err)
+		} else {
+			fmt.Println(string(pluginConf))
 		}
 
 		// Save this config to a configured location.
