@@ -93,6 +93,7 @@ func init() {
 
 func getLatestKind(
 	ctx context.Context,
+	exited chan struct{},
 	pubkey string,
 	kind int,
 	relays []string) *nostr.Event {
@@ -143,7 +144,8 @@ func getLatestKind(
 	var latest *nostr.Event
 	var count int = 0
 
-	for res := range results {
+	select {
+	case res := <-results:
 		if res == nil {
 			break
 		}
@@ -159,6 +161,9 @@ func getLatestKind(
 		if count >= len(relays) {
 			break
 		}
+	case <-exited:
+		cancel()
+		break
 	}
 
 	return latest
@@ -166,6 +171,7 @@ func getLatestKind(
 
 func getUsersInfo(
 	ctx context.Context,
+	exited chan struct{},
 	users []wot.User,
 	up *StrFryStream,
 	down *StrFryStream,
@@ -182,7 +188,7 @@ func getUsersInfo(
 
 			log.Info().Str("user", user.PubKey).Int("depth", user.Depth).Msg("starting...")
 
-			meta := getLatestKind(ctx, pubkey, nostr.KindRelayListMetadata, relays)
+			meta := getLatestKind(ctx, exited, pubkey, nostr.KindRelayListMetadata, relays)
 
 			if meta != nil {
 				for _, tag := range meta.Tags.GetAll([]string{"r"}) {
@@ -203,7 +209,7 @@ func getUsersInfo(
 				}
 			}
 
-			follows := getLatestKind(ctx, pubkey, nostr.KindContactList, relays)
+			follows := getLatestKind(ctx, exited, pubkey, nostr.KindContactList, relays)
 
 			// Create a config for writepolicy plugin for all of
 			// the public keys followed.
@@ -241,7 +247,7 @@ func getUsersInfo(
 				}
 
 				if nextDepth > 0 {
-					getUsersInfo(ctx, nextUsers, up, down, both, plugin, relays)
+					getUsersInfo(ctx, exited, nextUsers, up, down, both, plugin, relays)
 				}
 			}
 
@@ -259,6 +265,7 @@ func main() {
 	// Setup signal monitoring and keep the process open.
 	signals := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
+	exited := make(chan struct{})
 
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
@@ -266,6 +273,7 @@ func main() {
 		s := <-signals
 		fmt.Println()
 		fmt.Println(s)
+		close(exited)
 		done <- true
 	}()
 
@@ -349,7 +357,7 @@ func main() {
 			authorAllowMap: make(map[string]bool),
 		}
 
-		getUsersInfo(ctx, cfg.AuthorWotUsers, &up, &down, &both, &plugin, relays)
+		getUsersInfo(ctx, exited, cfg.AuthorWotUsers, &up, &down, &both, &plugin, relays)
 
 		router.Streams["wotup"] = up
 		router.Streams["wotdown"] = down
