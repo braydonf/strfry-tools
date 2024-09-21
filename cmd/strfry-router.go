@@ -23,11 +23,18 @@ import (
 )
 
 
-// StryFry down/write plugin config.
+// StryFry write plugin config.
 type StrFryDownPlugin struct {
 	AuthorAllow []string `json:"author-allow"`
 	authorAllowMap map[string]bool
 	authorAllowMutex sync.RWMutex
+}
+
+func NewStrFryDownPlugin() StrFryDownPlugin {
+	return StrFryDownPlugin{
+		AuthorAllow: make([]string, 0, 1000),
+		authorAllowMap: make(map[string]bool),
+	}
 }
 
 func (g *StrFryDownPlugin) hasAuthorAllow(pubkey string) bool {
@@ -57,6 +64,20 @@ type StrFryStream struct {
 	Relays []string `json:"urls"`
 	relaysMap map[string]bool
 	relaysMutex sync.RWMutex
+}
+
+func NewStrFryStream(dir string, pluginPath string) StrFryStream {
+	stream := StrFryStream{
+		Direction: dir,
+		Relays: make([]string, 0, 20),
+		relaysMap: make(map[string]bool),
+	}
+
+	if dir == "down" || dir == "both" {
+		stream.PluginDown = pluginPath
+	}
+
+	return stream
 }
 
 func (g *StrFryStream) hasRelay(relay string) bool {
@@ -265,68 +286,29 @@ func getUsersInfo(
 
 
 func main() {
-	// Setup signal monitoring and keep the process open.
+	// Used to keep the process open and watch for
+	// system signals to interrupt the process.
 	signals := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
-	exited := make(chan struct{})
-
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
+	// This is used to signal to go routines to
+	// cancel any contexts.
+	exited := make(chan struct{})
+
 	go func() {
-		s := <-signals
-		fmt.Println()
-		fmt.Println(s)
+		sig := <-signals
+		fmt.Printf("Received signal: %s\n", sig)
 		close(exited)
 		done <- true
 	}()
 
-	f := flag.NewFlagSet("conf", flag.ContinueOnError)
-	f.Usage = func() {
-		fmt.Println(f.FlagUsages())
-		os.Exit(0)
-	}
+	// Setup flags, load config and set log level.
+	f := SetupFlags()
+	LoadConfig(f, &cfg)
+	SetLogLevel(cfg.LogLevel)
 
-	// Path to one or more config files to load into koanf along with some config params.
-	f.StringSlice("conf", []string{"config.yml"}, "path to one or more .yml config files")
-	f.Parse(os.Args[1:])
-
-	// Load the config files provided in the commandline.
-	cFiles, _ := f.GetStringSlice("conf")
-	for _, c := range cFiles {
-		if err := knf.Load(file.Provider(c), yaml.Parser()); err != nil {
-			log.Fatal().Err(err).Msg("error loading file: %v")
-		}
-	}
-
-	// Override command over the config file.
-	if err := knf.Load(posflag.Provider(f, ".", knf), nil); err != nil {
-		log.Fatal().Err(err).Msg("error loading config: %v")
-	}
-
-	// Get the settings.
-	knf.Unmarshal("", &cfg)
-
-	// Set the log level.
-	if cfg.LogLevel == "panic" {
-		zerolog.SetGlobalLevel(zerolog.PanicLevel)
-	} else if (cfg.LogLevel == "fatal") {
-		zerolog.SetGlobalLevel(zerolog.FatalLevel)
-	} else if (cfg.LogLevel == "error") {
-		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
-	} else if (cfg.LogLevel == "warn") {
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
-	} else if (cfg.LogLevel == "info") {
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	} else if (cfg.LogLevel == "debug") {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	} else if (cfg.LogLevel == "trace") {
-		zerolog.SetGlobalLevel(zerolog.TraceLevel)
-	} else {
-		log.Warn().Str("loglevel", cfg.LogLevel).Msg("unknown log level, using 'info'")
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	}
-
-	// Now do Nostr stuff.
+	// Now do Nostr requests and other things.
 	ctx := context.Background()
 
 	updateUsers := func() {
@@ -335,30 +317,10 @@ func main() {
 		var router StrFryRouter
 		router.Streams = make(map[string]StrFryStream)
 
-		up := StrFryStream{
-			Direction: "up",
-			Relays: make([]string, 0, 20),
-			relaysMap: make(map[string]bool),
-		}
-
-		down := StrFryStream{
-			Direction: "down",
-			PluginDown: "/usr/bin/strfry-writepolicy",
-			Relays: make([]string, 0, 20),
-			relaysMap: make(map[string]bool),
-		}
-
-		both := StrFryStream{
-			Direction: "both",
-			PluginDown: "/usr/bin/strfry-writepolicy",
-			Relays: make([]string, 0, 20),
-			relaysMap: make(map[string]bool),
-		}
-
-		plugin := StrFryDownPlugin{
-			AuthorAllow: make([]string, 0, 1000),
-			authorAllowMap: make(map[string]bool),
-		}
+		up := NewStrFryStream("up", "")
+		down := NewStrFryStream("down", "/usr/bin/strfry-writepolicy")
+		both := NewStrFryStream("both", "/usr/bin/strfry-writepolicy")
+		plugin := NewStrFryDownPlugin()
 
 		getUsersInfo(ctx, exited, cfg.AuthorWotUsers, &up, &down, &both, &plugin, relays)
 
@@ -399,4 +361,55 @@ func main() {
 	// Periodically run and sync for all users using
 	// strfry negentropy. Also run this at start as in
 	// the case of downtime or a new user.
+}
+
+func SetLogLevel(lvl string) {
+	if lvl == "panic" {
+		zerolog.SetGlobalLevel(zerolog.PanicLevel)
+	} else if (lvl == "fatal") {
+		zerolog.SetGlobalLevel(zerolog.FatalLevel)
+	} else if (lvl == "error") {
+		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	} else if (lvl == "warn") {
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	} else if (lvl == "info") {
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	} else if (lvl == "debug") {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	} else if (lvl == "trace") {
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	} else {
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	}
+}
+
+func SetupFlags() *flag.FlagSet {
+	f := flag.NewFlagSet("conf", flag.ContinueOnError)
+	f.Usage = func() {
+		fmt.Println(f.FlagUsages())
+		os.Exit(0)
+	}
+
+	f.StringSlice("conf", []string{"config.yml"}, "path to one or more .yml config files")
+	f.Parse(os.Args[1:])
+
+	return f
+}
+
+func LoadConfig(f *flag.FlagSet, cfg *wot.Config) {
+	// Load the config files provided in the commandline.
+	filepaths, _ := f.GetStringSlice("conf")
+	for _, c := range filepaths {
+		if err := knf.Load(file.Provider(c), yaml.Parser()); err != nil {
+			log.Fatal().Err(err).Msg("error loading file: %v")
+		}
+	}
+
+	// Override command over the config file.
+	if err := knf.Load(posflag.Provider(f, ".", knf), nil); err != nil {
+		log.Fatal().Err(err).Msg("error loading config: %v")
+	}
+
+	// Get the settings and set the log level.
+	knf.Unmarshal("", &cfg)
 }

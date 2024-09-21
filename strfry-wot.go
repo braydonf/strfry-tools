@@ -13,3 +13,4 @@ type Config struct {
 	AuthorMetadataRelays []string `koanf:"author-metadata-relays"`
 	AuthorWotUsers []User `koanf:"author-wot-users"`
 }
+
