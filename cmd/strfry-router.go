@@ -144,26 +144,29 @@ func getLatestKind(
 	var latest *nostr.Event
 	var count int = 0
 
-	select {
-	case res := <-results:
-		if res == nil {
-			break
-		}
+	outer:
+	for {
+		select {
+		case res := <-results:
+			if res == nil {
+				break outer
+			}
 
-		if latest != nil && res.CreatedAt > latest.CreatedAt {
-			latest = res
-		} else {
-			latest = res
-		}
+			if latest != nil && res.CreatedAt > latest.CreatedAt {
+				latest = res
+			} else {
+				latest = res
+			}
 
-		count++
+			count++
 
-		if count >= len(relays) {
-			break
+			if count >= len(relays) {
+				break outer
+			}
+		case <-exited:
+			cancel()
+			break outer
 		}
-	case <-exited:
-		cancel()
-		break
 	}
 
 	return latest
