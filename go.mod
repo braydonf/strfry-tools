@@ -1,4 +1,4 @@
-module github.com/braydonf/strfry-wot
+module github.com/braydonf/strfry-tools
 
 go 1.23.1
 
