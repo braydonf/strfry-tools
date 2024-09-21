@@ -4,6 +4,8 @@ go 1.23.1
 
 require (
 	github.com/jiftechnify/strfrui v0.2.0
+	github.com/kelseyhightower/envconfig v1.4.0
+	github.com/knadh/koanf/parsers/json v0.1.0
 	github.com/knadh/koanf/parsers/yaml v0.1.0
 	github.com/knadh/koanf/providers/file v1.1.0
 	github.com/knadh/koanf/providers/posflag v0.1.0
@@ -12,6 +14,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/zerolog v1.33.0
 	github.com/spf13/pflag v1.0.5
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (

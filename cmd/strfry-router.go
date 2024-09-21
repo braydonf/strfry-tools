@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/braydonf/strfry-wot"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/posflag"
@@ -22,6 +21,19 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
+type User struct {
+	Name string `koanf:"name"`
+	PubKey string `koanf:"pubkey"`
+	Depth int `koanf:"depth"`
+	Direction string `koanf:"dir"`
+}
+
+type Config struct {
+	LogLevel string `koanf:"log-level"`
+	AuthorWhitelist []string `koanf:"author-whitelist"`
+	AuthorMetadataRelays []string `koanf:"author-metadata-relays"`
+	AuthorWotUsers []User `koanf:"author-wot-users"`
+}
 
 // StryFry write plugin config.
 type StrFryDownPlugin struct {
@@ -104,7 +116,7 @@ type StrFryRouter struct {
 var (
 	knf = koanf.New(".")
 	crn = cron.New(cron.WithSeconds())
-	cfg wot.Config
+	cfg Config
 	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
 )
 
@@ -196,7 +208,7 @@ func getLatestKind(
 func getUsersInfo(
 	ctx context.Context,
 	exited chan struct{},
-	users []wot.User,
+	users []User,
 	up *StrFryStream,
 	down *StrFryStream,
 	both *StrFryStream,
@@ -240,7 +252,7 @@ func getUsersInfo(
 
 			if follows != nil {
 				ptags := follows.Tags.GetAll([]string{"p"})
-				nextUsers := make([]wot.User, 0, len(ptags))
+				nextUsers := make([]User, 0, len(ptags))
 				nextDepth := user.Depth - 1
 
 				for _, tag := range ptags {
@@ -255,7 +267,7 @@ func getUsersInfo(
 							plugin.AppendUnique(hex)
 
 							if nextDepth > 0 {
-								nextUsers = append(nextUsers, wot.User{
+								nextUsers = append(nextUsers, User{
 									PubKey: hex,
 									Depth: user.Depth - 1,
 									Direction: user.Direction,
@@ -390,13 +402,17 @@ func SetupFlags() *flag.FlagSet {
 		os.Exit(0)
 	}
 
-	f.StringSlice("conf", []string{"config.yml"}, "path to one or more .yml config files")
+	f.StringSlice(
+		"conf",
+		[]string{"router.yml"},
+		"path to one or more .yml router config files")
+
 	f.Parse(os.Args[1:])
 
 	return f
 }
 
-func LoadConfig(f *flag.FlagSet, cfg *wot.Config) {
+func LoadConfig(f *flag.FlagSet, cfg *Config) {
 	// Load the config files provided in the commandline.
 	filepaths, _ := f.GetStringSlice("conf")
 	for _, c := range filepaths {

@@ -1,10 +1,5 @@
 log-level: "debug"
 
-author-whitelist:
-  - "<32-byte-public-key-hex>"
-  - "<32-byte-public-key-hex>"
-  - "<32-byte-public-key-hex>"
-
 author-metadata-relays:
   - "wss://domain1.tld"
   - "wss://domian2.tld"

@@ -1,4 +1,6 @@
 *~
-config.yml
-strfry-writepolicy
+router.yml
+write.yml
 strfry-router
+strfry-router-plugin
+strfry-write-plugin
