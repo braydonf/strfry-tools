@@ -173,9 +173,8 @@ func getUsersInfo(
 	plugin *StrFryDownPlugin,
 	relays []string) {
 
-	completed := 0
-	total := len(users)
-	done := make(chan bool, total)
+	wg := sync.WaitGroup{}
+	wg.Add(len(users))
 
 	for _, user := range users {
 		go func() {
@@ -248,20 +247,11 @@ func getUsersInfo(
 
 			log.Info().Str("user", user.PubKey).Msg("...ended")
 
-			done <- true
+			wg.Done()
 		}()
 	}
 
-	for d := range done {
-		if d {
-			completed++
-			if completed >= total {
-				break
-			}
-		} else {
-			break
-		}
-	}
+	wg.Wait()
 }
 
 
