@@ -74,15 +74,20 @@ type StrFryStream struct {
 	PluginDown string `json:"pluginDown,omitempty"`
 	PluginUp string `json:"pluginUp,omitempty"`
 	Relays []string `json:"urls"`
+	Filter string `json:"filter,omitempty"`
 	relaysMap map[string]bool
 	relaysMutex sync.RWMutex
 }
 
-func NewStrFryStream(dir string, pluginPath string) StrFryStream {
+func NewStrFryStream(dir string, filter string, pluginPath string) StrFryStream {
 	stream := StrFryStream{
 		Direction: dir,
-		Relays: make([]string, 0, 20),
+		Relays: make([]string, 0, 100),
 		relaysMap: make(map[string]bool),
+	}
+
+	if filter != "" {
+		stream.Filter = filter
 	}
 
 	if dir == "down" || dir == "both" {
@@ -137,7 +142,7 @@ func getLatestKind(
 		Limit:   1,
 	}}
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	results := make(chan *nostr.Event)
@@ -233,16 +238,24 @@ func getUsersInfo(
 						continue
 					}
 
-					if user.Direction == "down" {
-						down.AppendUnique(tag[1])
-					} else if user.Direction == "up" {
-						up.AppendUnique(tag[1])
-					} else if user.Direction == "both" {
-						both.AppendUnique(tag[1])
-					} else {
+					relay := tag[1]
+
+					switch user.Direction {
+					case "down":
+						down.AppendUnique(relay)
+						break
+					case "up":
+						up.AppendUnique(relay)
+						break
+					case "both":
+						both.AppendUnique(relay)
+						break;
+					default:
 						log.Warn().Str("unrecognized dir", user.Direction)
 					}
 				}
+			} else {
+				log.Warn().Msg("unexpected no relay meta result")
 			}
 
 			follows := getLatestKind(ctx, exited, pubkey, nostr.KindContactList, relays)
@@ -285,6 +298,27 @@ func getUsersInfo(
 				if nextDepth > 0 {
 					getUsersInfo(ctx, exited, nextUsers, up, down, both, plugin, relays)
 				}
+
+				// Now add the filter to the router config.
+				filter := nostr.Filter{
+					Authors: make([]string, 0, len(plugin.AuthorAllow)),
+					Limit:   0,
+				}
+
+				for _, pubkey := range plugin.AuthorAllow {
+					filter.Authors = append(filter.Authors, pubkey)
+				}
+
+				switch user.Direction {
+				case "down":
+					down.Filter = filter.String()
+					break
+				case "both":
+					both.Filter = filter.String()
+					break
+				}
+			} else {
+				log.Warn().Msg("unexpected no follow list result")
 			}
 
 			log.Info().Str("user", user.PubKey).Msg("...ended")
@@ -329,9 +363,9 @@ func main() {
 		var router StrFryRouter
 		router.Streams = make(map[string]StrFryStream)
 
-		up := NewStrFryStream("up", "")
-		down := NewStrFryStream("down", "/usr/bin/strfry-writepolicy")
-		both := NewStrFryStream("both", "/usr/bin/strfry-writepolicy")
+		up := NewStrFryStream("up", "", "")
+		down := NewStrFryStream("down", "", "/usr/bin/strfry-writepolicy")
+		both := NewStrFryStream("both", "", "/usr/bin/strfry-writepolicy")
 		plugin := NewStrFryDownPlugin()
 
 		getUsersInfo(ctx, exited, cfg.AuthorWotUsers, &up, &down, &both, &plugin, relays)
@@ -345,7 +379,9 @@ func main() {
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
 		} else {
-			fmt.Println(string(conf))
+			if err := os.WriteFile("strfry-router.config", conf, 0666); err != nil {
+				fmt.Errorf("write error: %s", err)
+			}
 		}
 
 
@@ -354,11 +390,11 @@ func main() {
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
 		} else {
-			fmt.Println(string(pluginConf))
-		}
+			if err := os.WriteFile("strfry-router-plugin.json", pluginConf, 0666); err != nil {
+				fmt.Errorf("write error: %s", err)
+			}
 
-		// Save this config to a configured location.
-		// Save the write policy config.
+		}
 	}
 
 	updateUsers()
