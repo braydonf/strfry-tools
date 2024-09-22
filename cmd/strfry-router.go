@@ -182,6 +182,11 @@ func getLatestKind(
 	var latest *nostr.Event
 	var count int = 0
 
+	// TODO Get the last result from this request from on disk
+	// so that even if there is a network failure the contact
+	// would not be removed from the list. If there is a newer
+	// version from the relays, then use that one instead.
+
 	outer:
 	for {
 		select {
@@ -210,6 +215,124 @@ func getLatestKind(
 	return latest
 }
 
+func getUserRelayMeta(
+	ctx context.Context,
+	exited chan struct{},
+	user *User,
+	up *StrFryStream,
+	down *StrFryStream,
+	both *StrFryStream,
+	relays []string) {
+
+	pubkey := user.PubKey
+	meta := getLatestKind(ctx, exited, pubkey, nostr.KindRelayListMetadata, relays)
+
+	if meta != nil {
+		for _, tag := range meta.Tags.GetAll([]string{"r"}) {
+			if len(tag) < 2 {
+				log.Warn().Msg("unexpected r tag")
+				continue
+			}
+
+			relay := tag[1]
+
+			switch user.Direction {
+			case "down":
+				down.AppendUnique(relay)
+				break
+			case "up":
+				up.AppendUnique(relay)
+				break
+			case "both":
+				both.AppendUnique(relay)
+				break;
+			default:
+				log.Warn().Str("unrecognized dir", user.Direction)
+			}
+		}
+	} else {
+		log.Warn().Msg("unexpected no relay meta result")
+	}
+}
+
+func getUserFollows(
+	ctx context.Context,
+	exited chan struct{},
+	user *User,
+	up *StrFryStream,
+	down *StrFryStream,
+	both *StrFryStream,
+	plugin *StrFryDownPlugin,
+	relays []string) {
+
+	pubkey := user.PubKey
+	nextDepth := user.Depth - 1
+
+	if nextDepth < 0 {
+		return
+	}
+
+	follows := getLatestKind(ctx, exited, pubkey, nostr.KindContactList, relays)
+
+	nextUsers := make([]User, 0, 1000)
+
+	if follows != nil {
+		ptags := follows.Tags.GetAll([]string{"p"})
+
+		for _, tag := range ptags {
+			if len(tag) < 2 {
+				log.Warn().Msg("unexpected p tag")
+				continue
+			}
+
+			hex := tag[1]
+			if nostr.IsValidPublicKeyHex(hex) {
+				if user.Direction == "down" || user.Direction == "both" {
+					plugin.AppendUnique(hex)
+
+					if nextDepth >= 0 {
+						nextUsers = append(nextUsers, User{
+							PubKey: hex,
+							Depth: user.Depth - 1,
+							Direction: user.Direction,
+						})
+					}
+
+				} else if user.Direction != "up" {
+					log.Warn().Str("unrecognized dir", user.Direction)
+				}
+			} else {
+				log.Warn().Str("invalid pubkey: %s", hex)
+			}
+		}
+
+		// Now add the filter to the router config.
+		filter := nostr.Filter{
+			Authors: make([]string, 0, len(plugin.AuthorAllow)),
+			Limit:   0,
+		}
+
+		for _, pubkey := range plugin.AuthorAllow {
+			filter.Authors = append(filter.Authors, pubkey)
+		}
+
+		switch user.Direction {
+		case "down":
+			down.Filter = filter.String()
+			break
+		case "both":
+			both.Filter = filter.String()
+			break
+		}
+	} else {
+		log.Warn().Msg("unexpected no follow list result")
+	}
+
+	if len(nextUsers) > 0 && nextDepth >= 0 {
+		getUsersInfo(ctx, exited, nextUsers, up, down, both, plugin, relays)
+	}
+}
+
 func getUsersInfo(
 	ctx context.Context,
 	exited chan struct{},
@@ -225,101 +348,11 @@ func getUsersInfo(
 
 	for _, user := range users {
 		go func() {
-			pubkey := user.PubKey
-
 			log.Info().Str("user", user.PubKey).Int("depth", user.Depth).Msg("starting...")
 
-			meta := getLatestKind(ctx, exited, pubkey, nostr.KindRelayListMetadata, relays)
+			getUserRelayMeta(ctx, exited, &user, up, down, both, relays)
 
-			if meta != nil {
-				for _, tag := range meta.Tags.GetAll([]string{"r"}) {
-					if len(tag) < 2 {
-						log.Warn().Msg("unexpected r tag")
-						continue
-					}
-
-					relay := tag[1]
-
-					switch user.Direction {
-					case "down":
-						down.AppendUnique(relay)
-						break
-					case "up":
-						up.AppendUnique(relay)
-						break
-					case "both":
-						both.AppendUnique(relay)
-						break;
-					default:
-						log.Warn().Str("unrecognized dir", user.Direction)
-					}
-				}
-			} else {
-				log.Warn().Msg("unexpected no relay meta result")
-			}
-
-			follows := getLatestKind(ctx, exited, pubkey, nostr.KindContactList, relays)
-
-			// Create a config for writepolicy plugin for all of
-			// the public keys followed.
-
-			if follows != nil {
-				ptags := follows.Tags.GetAll([]string{"p"})
-				nextUsers := make([]User, 0, len(ptags))
-				nextDepth := user.Depth - 1
-
-				for _, tag := range ptags {
-					if len(tag) < 2 {
-						log.Warn().Msg("unexpected p tag")
-						continue
-					}
-
-					hex := tag[1]
-					if nostr.IsValidPublicKeyHex(hex) {
-						if user.Direction == "down" || user.Direction == "both" {
-							plugin.AppendUnique(hex)
-
-							if nextDepth > 0 {
-								nextUsers = append(nextUsers, User{
-									PubKey: hex,
-									Depth: user.Depth - 1,
-									Direction: user.Direction,
-								})
-							}
-
-						} else if user.Direction != "up" {
-							log.Warn().Str("unrecognized dir", user.Direction)
-						}
-					} else {
-						log.Warn().Str("invalid pubkey: %s", hex)
-					}
-				}
-
-				if nextDepth > 0 {
-					getUsersInfo(ctx, exited, nextUsers, up, down, both, plugin, relays)
-				}
-
-				// Now add the filter to the router config.
-				filter := nostr.Filter{
-					Authors: make([]string, 0, len(plugin.AuthorAllow)),
-					Limit:   0,
-				}
-
-				for _, pubkey := range plugin.AuthorAllow {
-					filter.Authors = append(filter.Authors, pubkey)
-				}
-
-				switch user.Direction {
-				case "down":
-					down.Filter = filter.String()
-					break
-				case "both":
-					both.Filter = filter.String()
-					break
-				}
-			} else {
-				log.Warn().Msg("unexpected no follow list result")
-			}
+			getUserFollows(ctx, exited, &user, up, down, both, plugin, relays)
 
 			log.Info().Str("user", user.PubKey).Msg("...ended")
 
@@ -329,7 +362,6 @@ func getUsersInfo(
 
 	wg.Wait()
 }
-
 
 func main() {
 	// Used to keep the process open and watch for
@@ -363,6 +395,8 @@ func main() {
 		var router StrFryRouter
 		router.Streams = make(map[string]StrFryStream)
 
+		// TODO Use a configuration option for these plugin paths.
+
 		up := NewStrFryStream("up", "", "")
 		down := NewStrFryStream("down", "", "/usr/bin/strfry-writepolicy")
 		both := NewStrFryStream("both", "", "/usr/bin/strfry-writepolicy")
@@ -375,6 +409,9 @@ func main() {
 		router.Streams["wotboth"] = both
 
 		conf, err := json.MarshalIndent(router, "", "  ")
+
+		// TODO Use a configuration option to determine where to output
+		// the configuration files.
 
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
@@ -406,7 +443,7 @@ func main() {
 
 	crn.Stop()
 
-	// Periodically run and sync for all users using
+	// TODO Periodically run and sync for all users using
 	// strfry negentropy. Also run this at start as in
 	// the case of downtime or a new user.
 }
