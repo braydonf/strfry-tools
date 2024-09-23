@@ -225,7 +225,7 @@ func getUserRelayMeta(
 	both *StrFryStream,
 	relays []string) {
 
-	if user.RelayDepth < 1 {
+	if user.RelayDepth < 0 {
 		return
 	}
 
