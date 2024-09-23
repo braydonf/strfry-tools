@@ -4,6 +4,10 @@ discovery-relays:
   - "wss://domain1.tld"
   - "wss://domian2.tld"
 
+plugin-down: "/usr/bin/local/strfry-router-plugin"
+plugin-config: "/var/local/strfry-router-plugin.json"
+router-config: "/var/local/strfry-router.config"
+
 users:
   - name: "alice"
     pubkey: "<32-byte-public-key-hex>"

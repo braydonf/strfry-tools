@@ -31,6 +31,9 @@ type User struct {
 
 type Config struct {
 	LogLevel string `koanf:"log-level"`
+	PluginDown string `koanf:"plugin-down"`
+	PluginConfig string `koanf:"plugin-config"`
+	RouterConfig string `koanf:"router-config"`
 	AuthorMetadataRelays []string `koanf:"discovery-relays"`
 	AuthorWotUsers []User `koanf:"users"`
 }
@@ -401,11 +404,11 @@ func main() {
 		var router StrFryRouter
 		router.Streams = make(map[string]StrFryStream)
 
-		// TODO Use a configuration option for these plugin paths.
+		downPath := cfg.PluginDown
 
 		up := NewStrFryStream("up", "", "")
-		down := NewStrFryStream("down", "", "/usr/bin/strfry-writepolicy")
-		both := NewStrFryStream("both", "", "/usr/bin/strfry-writepolicy")
+		down := NewStrFryStream("down", "", downPath)
+		both := NewStrFryStream("both", "", downPath)
 		plugin := NewStrFryDownPlugin()
 
 		getUsersInfo(ctx, exited, cfg.AuthorWotUsers, &up, &down, &both, &plugin, relays)
@@ -416,24 +419,20 @@ func main() {
 
 		conf, err := json.MarshalIndent(router, "", "  ")
 
-		// TODO Use a configuration option to determine where to output
-		// the configuration files.
-
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
 		} else {
-			if err := os.WriteFile("strfry-router.config", conf, 0666); err != nil {
+			if err := os.WriteFile(cfg.RouterConfig, conf, 0666); err != nil {
 				fmt.Errorf("write error: %s", err)
 			}
 		}
-
 
 		pluginConf, err := json.MarshalIndent(plugin, "", "  ")
 
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
 		} else {
-			if err := os.WriteFile("strfry-router-plugin.json", pluginConf, 0666); err != nil {
+			if err := os.WriteFile(cfg.PluginConfig, pluginConf, 0666); err != nil {
 				fmt.Errorf("write error: %s", err)
 			}
 
