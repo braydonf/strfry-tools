@@ -46,7 +46,7 @@ users:
 	dir: up
 ```
 
-The `author-metadata-relays` are used to retrieve the `kind 10002` (NIP-65) relay list metadata for each pubkey that has been defined in `author-wot-users`. In this example, the `depth` of `1` will filter, sync and permit only the contacts/follows of "alice" and a depth of `2` will filter, sync and permit contacts and contacts of contacts of "bob", as determined by their `kind 3` list. The `relay-depth` option is the depth that relay list metadata is added to the config.
+The `discovery-relays` are used to retrieve the `kind 10002` (NIP-65) relay list metadata for each pubkey that has been defined in `users`. In this example, the `depth` of `1` will filter, sync and permit only the contacts/follows of "alice" and a depth of `2` will filter, sync and permit contacts and contacts of contacts of "bob", as determined by their `kind 3` contact/follow list. The `relay-depth` option is the depth that relay list metadata is added to the config.
 
 ### Running
 
