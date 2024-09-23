@@ -3,13 +3,17 @@
 This is a collection of programs and plugins for administrating a [strfry](https://github.com/hoytech/strfry) relay for the [Nostr protocol](https://github.com/nostr-protocol/nips).
 
 Included tools:
-- `strfry-router` This will help configure a `strfry router` to create relay-to-relay topology.
+- `strfry-router` This will help configure a `strfry router` to create user specific relay-to-relay network topology.
 - `strfry-router-plugin` This is a write policy plugin for `stryfry` to be able to permit specific event authors via streams in a `strfry router`.
 - `strfry-write-plugin` This is a standalone write policy plugin.
 
 ## Router
 
-This programs configures a `strfry router` to have different relay-to-relay topology. For example, using a WoT based on a set of configured root pubkeys. The `kind 3` (NIP-02) contact/follow list will be retrieved for each root pubkey, each contact will synced `down`, `up` or in `both` directions. This can be extended to different depths. A depth of `1` will sync contacts, a depth of `2` will sync contacts and contacts of contacts, and etcetera. The `kind 10002` (NIP-65) relay list metadata for each contact will be retrieved and used to create router topology. This is the "outbox model" and can help build robust transmission of notes and other stuff. A lightweight client can connect to this relay and have access to all contact pubkeys, without complexity and with efficient use of bandwidth. The `negentropy` protocol extension is used to sync notes for complete and bandwidth efficient syncronization.
+This programs configures a `strfry router` to have different user specific relay-to-relay topology. It will configure a network of relays based on a set of configured root pubkeys and their `kind 3` (NIP-02) contact/follow lists and `kind 10002` (NIP-65) relay list metada ("outbox model") and syncing/streaming events for their contacts.
+
+The network can be extended to different depths. A depth of `1` will sync contacts, a depth of `2` will sync contacts and contacts of contacts, and etcetera. Each contact can be streamed/synced `down`, `up` or in `both` directions.
+
+The `negentropy` Nostr protocol extension is used to sync notes for complete and bandwidth efficient syncronization.
 
 ### Build & Install
 
