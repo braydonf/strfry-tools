@@ -25,6 +25,7 @@ type User struct {
 	Name string `koanf:"name"`
 	PubKey string `koanf:"pubkey"`
 	Depth int `koanf:"depth"`
+	RelayDepth int `koanf:"relay-depth"`
 	Direction string `koanf:"dir"`
 }
 
@@ -44,7 +45,7 @@ type StrFryDownPlugin struct {
 
 func NewStrFryDownPlugin() StrFryDownPlugin {
 	return StrFryDownPlugin{
-		AuthorAllow: make([]string, 0, 1000),
+		AuthorAllow: make([]string, 0),
 		authorAllowMap: make(map[string]bool),
 	}
 }
@@ -58,7 +59,7 @@ func (g *StrFryDownPlugin) hasAuthorAllow(pubkey string) bool {
 	}
 }
 
-func (g *StrFryDownPlugin) AppendUnique(pubkey string) {
+func (g *StrFryDownPlugin) AppendUniqueAuthor(pubkey string) {
 	g.authorAllowMutex.Lock()
 	defer g.authorAllowMutex.Unlock()
 	if !g.hasAuthorAllow(pubkey) {
@@ -82,7 +83,7 @@ type StrFryStream struct {
 func NewStrFryStream(dir string, filter string, pluginPath string) StrFryStream {
 	stream := StrFryStream{
 		Direction: dir,
-		Relays: make([]string, 0, 100),
+		Relays: make([]string, 0),
 		relaysMap: make(map[string]bool),
 	}
 
@@ -106,7 +107,7 @@ func (g *StrFryStream) hasRelay(relay string) bool {
 	}
 }
 
-func (g *StrFryStream) AppendUnique(relay string) {
+func (g *StrFryStream) AppendUniqueRelay(relay string) {
 	g.relaysMutex.Lock()
 	defer g.relaysMutex.Unlock()
 	if !g.hasRelay(relay) {
@@ -224,6 +225,10 @@ func getUserRelayMeta(
 	both *StrFryStream,
 	relays []string) {
 
+	if user.RelayDepth < 1 {
+		return
+	}
+
 	pubkey := user.PubKey
 	meta := getLatestKind(ctx, exited, pubkey, nostr.KindRelayListMetadata, relays)
 
@@ -234,20 +239,22 @@ func getUserRelayMeta(
 				continue
 			}
 
-			relay := tag[1]
+			relay := nostr.NormalizeURL(tag[1])
+
+			if len(relay) == 0 {
+				continue
+			}
 
 			switch user.Direction {
 			case "down":
-				down.AppendUnique(relay)
+				down.AppendUniqueRelay(relay)
 				break
 			case "up":
-				up.AppendUnique(relay)
+				up.AppendUniqueRelay(relay)
 				break
 			case "both":
-				both.AppendUnique(relay)
+				both.AppendUniqueRelay(relay)
 				break;
-			default:
-				log.Warn().Str("unrecognized dir", user.Direction)
 			}
 		}
 	} else {
@@ -266,15 +273,14 @@ func getUserFollows(
 	relays []string) {
 
 	pubkey := user.PubKey
-	nextDepth := user.Depth - 1
 
-	if nextDepth < 0 {
+	if user.Depth < 1 {
 		return
 	}
 
 	follows := getLatestKind(ctx, exited, pubkey, nostr.KindContactList, relays)
 
-	nextUsers := make([]User, 0, 1000)
+	nextUsers := make([]User, 0)
 
 	if follows != nil {
 		ptags := follows.Tags.GetAll([]string{"p"})
@@ -288,12 +294,13 @@ func getUserFollows(
 			hex := tag[1]
 			if nostr.IsValidPublicKeyHex(hex) {
 				if user.Direction == "down" || user.Direction == "both" {
-					plugin.AppendUnique(hex)
+					plugin.AppendUniqueAuthor(hex)
 
-					if nextDepth >= 0 {
+					if user.Depth > 0 {
 						nextUsers = append(nextUsers, User{
 							PubKey: hex,
 							Depth: user.Depth - 1,
+							RelayDepth: user.RelayDepth - 1,
 							Direction: user.Direction,
 						})
 					}
@@ -328,7 +335,7 @@ func getUserFollows(
 		log.Warn().Msg("unexpected no follow list result")
 	}
 
-	if len(nextUsers) > 0 && nextDepth >= 0 {
+	if len(nextUsers) > 0 && user.Depth > 0 {
 		getUsersInfo(ctx, exited, nextUsers, up, down, both, plugin, relays)
 	}
 }
