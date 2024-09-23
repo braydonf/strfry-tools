@@ -24,26 +24,29 @@ Example configuration (`sample-router.yml`):
 ```
 log-level: "debug"
 
-author-metadata-relays:
+discovery-relays:
   - "wss://domain1.tld"
   - "wss://domian2.tld"
 
-author-wot-users:
+users:
   - name: "alice"
 	pubkey: "<32-byte-public-key-hex>"
 	depth: 1
+	relay-depth: 1
 	dir: down
   - name: "bob"
 	pubkey: "<32-byte-public-key-hex>"
 	depth: 2
+	relay-depth: 1
 	dir: both
   - name: "carol"
 	pubkey: "<32-byte-public-key-hex>"
 	depth: 1
+	relay-depth: 1
 	dir: up
 ```
 
-The `author-metadata-relays` are used to retrieve the `kind 10002` (NIP-65) relay list metadata for each pubkey that has been defined in `author-wot-users`. In this example, the `depth` of `1` will filter, sync and permit only the contacts/follows of "alice" and a depth of `2` will filter, sync and permit contacts and contacts of contacts of "bob", as determined by their `kind 3` list.
+The `author-metadata-relays` are used to retrieve the `kind 10002` (NIP-65) relay list metadata for each pubkey that has been defined in `author-wot-users`. In this example, the `depth` of `1` will filter, sync and permit only the contacts/follows of "alice" and a depth of `2` will filter, sync and permit contacts and contacts of contacts of "bob", as determined by their `kind 3` list. The `relay-depth` option is the depth that relay list metadata is added to the config.
 
 ### Running
 
