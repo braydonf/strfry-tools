@@ -77,20 +77,16 @@ type StrFryStream struct {
 	PluginDown string `json:"pluginDown,omitempty"`
 	PluginUp string `json:"pluginUp,omitempty"`
 	Relays []string `json:"urls"`
-	Filter string `json:"filter,omitempty"`
+	Filter *nostr.Filter `json:"filter,omitempty"`
 	relaysMap map[string]bool
 	relaysMutex sync.RWMutex
 }
 
-func NewStrFryStream(dir string, filter string, pluginPath string) StrFryStream {
+func NewStrFryStream(dir string, pluginPath string) StrFryStream {
 	stream := StrFryStream{
 		Direction: dir,
 		Relays: make([]string, 0),
 		relaysMap: make(map[string]bool),
-	}
-
-	if filter != "" {
-		stream.Filter = filter
 	}
 
 	if dir == "down" || dir == "both" {
@@ -120,6 +116,11 @@ func (g *StrFryStream) AppendUniqueRelay(relay string) {
 type StrFryRouter struct {
 	Streams map[string]StrFryStream `json:"streams"`
 }
+
+const (
+	FilterMaxBytes = 65535
+	FilterMaxAuthors = 950
+)
 
 var (
 	knf = koanf.New(".")
@@ -327,10 +328,10 @@ func getUserFollows(
 
 		switch user.Direction {
 		case "down":
-			down.Filter = filter.String()
+			down.Filter = &filter
 			break
 		case "both":
-			both.Filter = filter.String()
+			both.Filter = &filter
 			break
 		}
 	} else {
@@ -358,6 +359,10 @@ func getUsersInfo(
 	for _, user := range users {
 		go func() {
 			log.Info().Str("user", user.PubKey).Int("depth", user.Depth).Msg("starting...")
+
+			// TODO Create mulitple streams that will have a maximum filter size of
+			// authors OR filter for all events and let the plugin sort out what is
+			// relevant and what is not.
 
 			getUserRelayMeta(ctx, exited, &user, up, down, both, relays)
 
@@ -406,9 +411,9 @@ func main() {
 
 		downPath := cfg.PluginDown
 
-		up := NewStrFryStream("up", "", "")
-		down := NewStrFryStream("down", "", downPath)
-		both := NewStrFryStream("both", "", downPath)
+		up := NewStrFryStream("up", "")
+		down := NewStrFryStream("down", downPath)
+		both := NewStrFryStream("both", downPath)
 		plugin := NewStrFryDownPlugin()
 
 		getUsersInfo(ctx, exited, cfg.AuthorWotUsers, &up, &down, &both, &plugin, relays)
