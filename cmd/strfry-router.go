@@ -31,9 +31,8 @@ type User struct {
 
 type Config struct {
 	LogLevel string `koanf:"log-level"`
-	AuthorWhitelist []string `koanf:"author-whitelist"`
-	AuthorMetadataRelays []string `koanf:"author-metadata-relays"`
-	AuthorWotUsers []User `koanf:"author-wot-users"`
+	AuthorMetadataRelays []string `koanf:"discovery-relays"`
+	AuthorWotUsers []User `koanf:"users"`
 }
 
 // StryFry write plugin config.

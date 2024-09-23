@@ -1,10 +1,10 @@
 log-level: "debug"
 
-author-metadata-relays:
+discovery-relays:
   - "wss://domain1.tld"
   - "wss://domian2.tld"
 
-author-wot-users:
+users:
   - name: "alice"
     pubkey: "<32-byte-public-key-hex>"
     depth: 1
