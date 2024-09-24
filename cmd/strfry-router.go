@@ -35,7 +35,7 @@ type Config struct {
 	PluginConfig string `koanf:"plugin-config"`
 	RouterConfig string `koanf:"router-config"`
 	AuthorMetadataRelays []string `koanf:"discovery-relays"`
-	AuthorWotUsers []User `koanf:"users"`
+	Users []User `koanf:"users"`
 }
 
 // StryFry write plugin config.
@@ -69,6 +69,65 @@ func (g *StrFryDownPlugin) AppendUniqueAuthor(pubkey string) {
 	}
 }
 
+type StrFryFilter struct {
+	Filter *nostr.Filter
+	authorsMap map[string]bool
+	authorsMutex sync.RWMutex
+}
+
+func NewStrFryFilter() *StrFryFilter {
+	return &StrFryFilter{
+		Filter: &nostr.Filter{
+			Authors: make([]string, 0),
+			Limit: 0,
+		},
+		authorsMap: make(map[string]bool),
+	}
+}
+
+func (g *StrFryFilter) hasAuthor(author string) bool {
+	if _, ok := g.authorsMap[author]; ok {
+		return true
+	} else {
+		g.authorsMap[author] = true
+		return false
+	}
+}
+
+func (g *StrFryFilter) AppendUniqueAuthor(author string) {
+	g.authorsMutex.Lock()
+	defer g.authorsMutex.Unlock()
+	if !g.hasAuthor(author) {
+		g.Filter.Authors = append(g.Filter.Authors, author)
+	}
+}
+
+func (g *StrFryFilter) MarshalJSON() ([]byte, error) {
+	return json.Marshal(g.Filter)
+}
+
+func (g *StrFryFilter) UnmarshalJSON(data []byte) error {
+	var filter nostr.Filter
+	err := json.Unmarshal(data, &filter)
+
+	if err != nil {
+		return err
+	}
+
+	g.Filter = &filter
+
+	// TODO go through and add all authors to the map.
+
+	return nil
+}
+
+func (g *StrFryFilter) AuthorLength() int {
+	g.authorsMutex.Lock()
+	defer g.authorsMutex.Unlock()
+
+	return len(g.Filter.Authors)
+}
+
 // StrFry router config.
 // - https://github.com/hoytech/strfry/blob/master/docs/router.md
 // - https://github.com/taocpp/config/blob/main/doc/Writing-Config-Files.md
@@ -77,15 +136,16 @@ type StrFryStream struct {
 	PluginDown string `json:"pluginDown,omitempty"`
 	PluginUp string `json:"pluginUp,omitempty"`
 	Relays []string `json:"urls"`
-	Filter *nostr.Filter `json:"filter,omitempty"`
+	Filter *StrFryFilter `json:"filter,omitempty"`
 	relaysMap map[string]bool
 	relaysMutex sync.RWMutex
 }
 
-func NewStrFryStream(dir string, pluginPath string) StrFryStream {
-	stream := StrFryStream{
+func NewStrFryStream(dir string, pluginPath string) *StrFryStream {
+	stream := &StrFryStream{
 		Direction: dir,
 		Relays: make([]string, 0),
+		Filter: NewStrFryFilter(),
 		relaysMap: make(map[string]bool),
 	}
 
@@ -114,7 +174,92 @@ func (g *StrFryStream) AppendUniqueRelay(relay string) {
 }
 
 type StrFryRouter struct {
-	Streams map[string]StrFryStream `json:"streams"`
+	Streams map[string]*StrFryStream `json:"streams"`
+	currentUp string
+	currentUpIndex int
+	currentDown string
+	currentDownIndex int
+	currentBoth string
+	currentBothIndex int
+}
+
+func (g *StrFryRouter) PushToStream(user *User, relays []string, contacts []string) {
+	if len(g.currentUp) == 0 {
+		g.currentUpIndex = 0
+		g.currentUp = "depth-0-up-0"
+		g.Streams[g.currentUp] = NewStrFryStream("up", "")
+	}
+
+	if len(g.currentDown) == 0 {
+		g.currentDownIndex = 0
+		g.currentDown = "depth-0-down-0"
+		g.Streams[g.currentDown] = NewStrFryStream("down", cfg.PluginDown)
+	}
+
+	if len(g.currentBoth) == 0 {
+		g.currentBothIndex = 0
+		g.currentBoth = "depth-0-both-0"
+		g.Streams[g.currentBoth] = NewStrFryStream("both", cfg.PluginDown)
+	}
+
+	var stream *StrFryStream
+
+	dir := user.Direction
+
+	switch dir {
+	case "up":
+		stream = g.Streams[g.currentUp]
+
+		if (stream.Filter.AuthorLength() >= FilterMaxAuthors) {
+			g.currentUpIndex += 1
+			g.currentUp = fmt.Sprintf("depth-%d-up-%d", user.Depth, g.currentUpIndex)
+			g.Streams[g.currentUp] = NewStrFryStream("up", "")
+
+			stream = g.Streams[g.currentUp]
+		}
+
+		break
+	case "down":
+		stream = g.Streams[g.currentDown]
+
+		if (stream.Filter.AuthorLength() >= FilterMaxAuthors) {
+			g.currentDownIndex += 1
+			g.currentDown = fmt.Sprintf("depth-%d-down-%d", user.Depth, g.currentUpIndex)
+			g.Streams[g.currentDown] = NewStrFryStream("down", cfg.PluginDown)
+
+			stream = g.Streams[g.currentDown]
+		}
+
+		break
+	case "both":
+		stream = g.Streams[g.currentBoth]
+
+		if (stream.Filter.AuthorLength() >= FilterMaxAuthors) {
+			g.currentBothIndex += 1
+			g.currentBoth = fmt.Sprintf("depth-%d-both-%d", user.Depth, g.currentUpIndex)
+			g.Streams[g.currentBoth] = NewStrFryStream("both", cfg.PluginDown)
+
+			stream = g.Streams[g.currentBoth]
+		}
+
+		break
+	}
+
+	if dir == "down" || dir == "both" {
+		stream.Filter.AppendUniqueAuthor(user.PubKey)
+	}
+
+	plugin.AppendUniqueAuthor(user.PubKey)
+
+	for _, relay := range relays {
+		stream.AppendUniqueRelay(relay)
+	}
+
+	for _, hex := range contacts {
+		if dir == "down" || dir == "both" {
+			plugin.AppendUniqueAuthor(hex)
+		}
+	}
 }
 
 const (
@@ -127,6 +272,9 @@ var (
 	crn = cron.New(cron.WithSeconds())
 	cfg Config
 	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
+	router StrFryRouter
+	plugin StrFryDownPlugin
 )
 
 func init() {
@@ -139,6 +287,8 @@ func getLatestKind(
 	pubkey string,
 	kind int,
 	relays []string) *nostr.Event {
+
+	// TODO handle the case that relays is empty.
 
 	filters := []nostr.Filter{{
 		Kinds:   []int{kind},
@@ -222,18 +372,12 @@ func getLatestKind(
 func getUserRelayMeta(
 	ctx context.Context,
 	exited chan struct{},
-	user *User,
-	up *StrFryStream,
-	down *StrFryStream,
-	both *StrFryStream,
-	relays []string) {
+	pubkey string,
+	relays []string) []string {
 
-	if user.RelayDepth < 0 {
-		return
-	}
-
-	pubkey := user.PubKey
 	meta := getLatestKind(ctx, exited, pubkey, nostr.KindRelayListMetadata, relays)
+
+	results := make([]string, 0)
 
 	if meta != nil {
 		for _, tag := range meta.Tags.GetAll([]string{"r"}) {
@@ -248,42 +392,23 @@ func getUserRelayMeta(
 				continue
 			}
 
-			switch user.Direction {
-			case "down":
-				down.AppendUniqueRelay(relay)
-				break
-			case "up":
-				up.AppendUniqueRelay(relay)
-				break
-			case "both":
-				both.AppendUniqueRelay(relay)
-				break;
-			}
+			results = append(results, relay)
 		}
 	} else {
 		log.Warn().Msg("unexpected no relay meta result")
 	}
+
+	return results
 }
 
 func getUserFollows(
 	ctx context.Context,
 	exited chan struct{},
-	user *User,
-	up *StrFryStream,
-	down *StrFryStream,
-	both *StrFryStream,
-	plugin *StrFryDownPlugin,
-	relays []string) {
-
-	pubkey := user.PubKey
-
-	if user.Depth < 1 {
-		return
-	}
+	pubkey string,
+	relays []string) []string {
 
 	follows := getLatestKind(ctx, exited, pubkey, nostr.KindContactList, relays)
-
-	nextUsers := make([]User, 0)
+	pubkeys := make([]string, 0)
 
 	if follows != nil {
 		ptags := follows.Tags.GetAll([]string{"p"})
@@ -296,9 +421,50 @@ func getUserFollows(
 
 			hex := tag[1]
 			if nostr.IsValidPublicKeyHex(hex) {
-				if user.Direction == "down" || user.Direction == "both" {
-					plugin.AppendUniqueAuthor(hex)
+				pubkeys = append(pubkeys, hex)
+			} else {
+				log.Warn().Str("invalid pubkey: %s", hex)
+			}
+		}
+	} else {
+		log.Warn().Msg("unexpected no follow list result")
+	}
 
+	return pubkeys
+}
+
+func getUsersInfo(
+	ctx context.Context,
+	exited chan struct{},
+	users []User,
+	relays []string) {
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(users))
+
+	for _, user := range users {
+		log.Info().Str("user", user.PubKey).Int("depth", user.Depth).Msg("starting...")
+
+		go func() {
+			nextUsers := make([]User, 0)
+
+			// Gather all of the relays for the user.
+			userRelays := make([]string, 0)
+			if user.RelayDepth >= 0 {
+				userRelays = getUserRelayMeta(ctx, exited, user.PubKey, relays)
+			}
+
+			// Gather all of the pubkey contacts for the user.
+			var contacts = make([]string, 0)
+			if user.Depth > 0 {
+				contacts = getUserFollows(ctx, exited, user.PubKey, relays)
+			}
+
+			// Now add this user to the router.
+			router.PushToStream(&user, userRelays, contacts)
+
+			if user.Direction == "down" || user.Direction == "both" {
+				for _, hex := range contacts {
 					if user.Depth > 0 {
 						nextUsers = append(nextUsers, User{
 							PubKey: hex,
@@ -308,67 +474,19 @@ func getUserFollows(
 						})
 					}
 
-				} else if user.Direction != "up" {
-					log.Warn().Str("unrecognized dir", user.Direction)
 				}
-			} else {
-				log.Warn().Str("invalid pubkey: %s", hex)
 			}
-		}
-
-		// Now add the filter to the router config.
-		filter := nostr.Filter{
-			Authors: make([]string, 0, len(plugin.AuthorAllow)),
-			Limit:   0,
-		}
-
-		for _, pubkey := range plugin.AuthorAllow {
-			filter.Authors = append(filter.Authors, pubkey)
-		}
-
-		switch user.Direction {
-		case "down":
-			down.Filter = &filter
-			break
-		case "both":
-			both.Filter = &filter
-			break
-		}
-	} else {
-		log.Warn().Msg("unexpected no follow list result")
-	}
-
-	if len(nextUsers) > 0 && user.Depth > 0 {
-		getUsersInfo(ctx, exited, nextUsers, up, down, both, plugin, relays)
-	}
-}
-
-func getUsersInfo(
-	ctx context.Context,
-	exited chan struct{},
-	users []User,
-	up *StrFryStream,
-	down *StrFryStream,
-	both *StrFryStream,
-	plugin *StrFryDownPlugin,
-	relays []string) {
-
-	wg := sync.WaitGroup{}
-	wg.Add(len(users))
-
-	for _, user := range users {
-		go func() {
-			log.Info().Str("user", user.PubKey).Int("depth", user.Depth).Msg("starting...")
-
-			// TODO Create mulitple streams that will have a maximum filter size of
-			// authors OR filter for all events and let the plugin sort out what is
-			// relevant and what is not.
-
-			getUserRelayMeta(ctx, exited, &user, up, down, both, relays)
-
-			getUserFollows(ctx, exited, &user, up, down, both, plugin, relays)
 
 			log.Info().Str("user", user.PubKey).Msg("...ended")
+
+			if len(nextUsers) > 0 && user.Depth > 0 {
+				wg.Add(1)
+
+				go func() {
+					getUsersInfo(ctx, exited, nextUsers, relays)
+					wg.Done()
+				}()
+			}
 
 			wg.Done()
 		}()
@@ -378,6 +496,10 @@ func getUsersInfo(
 }
 
 func main() {
+	// Setup the router and plugin.
+	router.Streams = make(map[string]*StrFryStream)
+	plugin = NewStrFryDownPlugin()
+
 	// Used to keep the process open and watch for
 	// system signals to interrupt the process.
 	signals := make(chan os.Signal, 1)
@@ -404,23 +526,7 @@ func main() {
 	ctx := context.Background()
 
 	updateUsers := func() {
-		relays := cfg.AuthorMetadataRelays
-
-		var router StrFryRouter
-		router.Streams = make(map[string]StrFryStream)
-
-		downPath := cfg.PluginDown
-
-		up := NewStrFryStream("up", "")
-		down := NewStrFryStream("down", downPath)
-		both := NewStrFryStream("both", downPath)
-		plugin := NewStrFryDownPlugin()
-
-		getUsersInfo(ctx, exited, cfg.AuthorWotUsers, &up, &down, &both, &plugin, relays)
-
-		router.Streams["wotup"] = up
-		router.Streams["wotdown"] = down
-		router.Streams["wotboth"] = both
+		getUsersInfo(ctx, exited, cfg.Users, cfg.AuthorMetadataRelays)
 
 		conf, err := json.MarshalIndent(router, "", "  ")
 
