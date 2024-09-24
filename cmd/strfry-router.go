@@ -446,8 +446,6 @@ func getUsersInfo(
 		log.Info().Str("user", user.PubKey).Int("depth", user.Depth).Msg("starting...")
 
 		go func() {
-			nextUsers := make([]User, 0)
-
 			// Gather all of the relays for the user.
 			userRelays := make([]string, 0)
 			if user.RelayDepth >= 0 {
@@ -456,16 +454,21 @@ func getUsersInfo(
 
 			// Gather all of the pubkey contacts for the user.
 			var contacts = make([]string, 0)
-			if user.Depth > 0 {
+			if user.Depth >= 0 {
 				contacts = getUserFollows(ctx, exited, user.PubKey, relays)
 			}
 
 			// Now add this user to the router.
 			router.PushToStream(&user, userRelays, contacts)
 
-			if user.Direction == "down" || user.Direction == "both" {
-				for _, hex := range contacts {
-					if user.Depth > 0 {
+			log.Info().Str("user", user.PubKey).Msg("...ended")
+
+			// Now keep going for the next depth.
+			if user.Depth > 0 {
+				nextUsers := make([]User, 0)
+
+				if user.Direction == "down" || user.Direction == "both" {
+					for _, hex := range contacts {
 						nextUsers = append(nextUsers, User{
 							PubKey: hex,
 							Depth: user.Depth - 1,
@@ -475,17 +478,15 @@ func getUsersInfo(
 					}
 
 				}
-			}
 
-			log.Info().Str("user", user.PubKey).Msg("...ended")
+				if len(nextUsers) > 0 {
+					wg.Add(1)
 
-			if len(nextUsers) > 0 && user.Depth > 0 {
-				wg.Add(1)
-
-				go func() {
-					getUsersInfo(ctx, exited, nextUsers, relays)
-					wg.Done()
-				}()
+					go func() {
+						getUsersInfo(ctx, exited, nextUsers, relays)
+						wg.Done()
+					}()
+				}
 			}
 
 			wg.Done()
