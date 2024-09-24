@@ -34,7 +34,7 @@ type Config struct {
 	PluginDown string `koanf:"plugin-down"`
 	PluginConfig string `koanf:"plugin-config"`
 	RouterConfig string `koanf:"router-config"`
-	AuthorMetadataRelays []string `koanf:"discovery-relays"`
+	DiscoveryRelays []string `koanf:"discovery-relays"`
 	Users []User `koanf:"users"`
 }
 
@@ -265,7 +265,54 @@ func (g *StrFryRouter) PushToStream(user *User, relays []string, contacts []stri
 const (
 	FilterMaxBytes = 65535
 	FilterMaxAuthors = 950
+	MaxConcurrentReqs = 10
 )
+
+type ReqsCounter struct {
+	mutex sync.Mutex
+	count int
+}
+
+func (g *ReqsCounter) Begin() {
+	g.mutex.Lock()
+	g.count++
+	g.mutex.Unlock()
+}
+
+func (g *ReqsCounter) Done() {
+	g.mutex.Lock()
+	g.count--
+	g.mutex.Unlock()
+}
+
+func (g *ReqsCounter) Value() int {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+	return g.count
+}
+
+func (g *ReqsCounter) Wait(max int) {
+	if g.Value() < max {
+		return
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		for {
+			if g.Value() < max {
+				break
+			}
+
+			time.Sleep(3*time.Second)
+		}
+
+		wg.Done()
+	}()
+
+	wg.Wait()
+}
 
 var (
 	knf = koanf.New(".")
@@ -275,6 +322,8 @@ var (
 
 	router StrFryRouter
 	plugin StrFryDownPlugin
+
+	counter ReqsCounter
 )
 
 func init() {
@@ -286,6 +335,7 @@ func getLatestKind(
 	exited chan struct{},
 	pubkey string,
 	kind int,
+	pool *nostr.SimplePool,
 	relays []string) *nostr.Event {
 
 	// TODO handle the case that relays is empty.
@@ -296,45 +346,16 @@ func getLatestKind(
 		Limit:   1,
 	}}
 
+	counter.Wait(MaxConcurrentReqs)
+	counter.Begin()
+	defer counter.Done()
+
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	results := make(chan *nostr.Event)
-
-	for _, relayAddr := range relays {
-		go func() {
-			relay, err := nostr.RelayConnect(ctx, relayAddr)
-			if err != nil {
-				fmt.Errorf("%s\n", err)
-				results <- nil
-				return
-			}
-
-			sub, err := relay.Subscribe(ctx, filters)
-			if err != nil {
-				fmt.Errorf("%s\n", err)
-				results <- nil
-				return
-			}
-
-			defer sub.Unsub()
-
-			count := 0
-
-			for evt := range sub.Events {
-				results <- evt
-				count++
-				break
-			}
-
-			if count == 0 {
-				results <- nil
-			}
-		}()
-	}
+	results := pool.SubManyEose(ctx, relays, filters)
 
 	var latest *nostr.Event
-	var count int = 0
 
 	// TODO Get the last result from this request from on disk
 	// so that even if there is a network failure the contact
@@ -345,21 +366,16 @@ func getLatestKind(
 	for {
 		select {
 		case res := <-results:
-			if res == nil {
+			if res.Event == nil {
 				break outer
 			}
 
-			if latest != nil && res.CreatedAt > latest.CreatedAt {
-				latest = res
+			if latest != nil && res.Event.CreatedAt > latest.CreatedAt {
+				latest = res.Event
 			} else {
-				latest = res
+				latest = res.Event
 			}
-
-			count++
-
-			if count >= len(relays) {
-				break outer
-			}
+		case <-ctx.Done():
 		case <-exited:
 			cancel()
 			break outer
@@ -373,9 +389,10 @@ func getUserRelayMeta(
 	ctx context.Context,
 	exited chan struct{},
 	pubkey string,
+	pool *nostr.SimplePool,
 	relays []string) []string {
 
-	meta := getLatestKind(ctx, exited, pubkey, nostr.KindRelayListMetadata, relays)
+	meta := getLatestKind(ctx, exited, pubkey, nostr.KindRelayListMetadata, pool, relays)
 
 	results := make([]string, 0)
 
@@ -405,9 +422,10 @@ func getUserFollows(
 	ctx context.Context,
 	exited chan struct{},
 	pubkey string,
+	pool *nostr.SimplePool,
 	relays []string) []string {
 
-	follows := getLatestKind(ctx, exited, pubkey, nostr.KindContactList, relays)
+	follows := getLatestKind(ctx, exited, pubkey, nostr.KindContactList, pool, relays)
 	pubkeys := make([]string, 0)
 
 	if follows != nil {
@@ -437,6 +455,7 @@ func getUsersInfo(
 	ctx context.Context,
 	exited chan struct{},
 	users []User,
+	pool *nostr.SimplePool,
 	relays []string) {
 
 	wg := sync.WaitGroup{}
@@ -449,13 +468,13 @@ func getUsersInfo(
 			// Gather all of the relays for the user.
 			userRelays := make([]string, 0)
 			if user.RelayDepth >= 0 {
-				userRelays = getUserRelayMeta(ctx, exited, user.PubKey, relays)
+				userRelays = getUserRelayMeta(ctx, exited, user.PubKey, pool, relays)
 			}
 
 			// Gather all of the pubkey contacts for the user.
 			var contacts = make([]string, 0)
 			if user.Depth >= 0 {
-				contacts = getUserFollows(ctx, exited, user.PubKey, relays)
+				contacts = getUserFollows(ctx, exited, user.PubKey, pool, relays)
 			}
 
 			// Now add this user to the router.
@@ -483,7 +502,7 @@ func getUsersInfo(
 					wg.Add(1)
 
 					go func() {
-						getUsersInfo(ctx, exited, nextUsers, relays)
+						getUsersInfo(ctx, exited, nextUsers, pool, relays)
 						wg.Done()
 					}()
 				}
@@ -527,7 +546,23 @@ func main() {
 	ctx := context.Background()
 
 	updateUsers := func() {
-		getUsersInfo(ctx, exited, cfg.Users, cfg.AuthorMetadataRelays)
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		pool := nostr.NewSimplePool(ctx)
+
+		for _, relayAddr := range cfg.DiscoveryRelays {
+			relay, err := pool.EnsureRelay(relayAddr)
+
+			if err != nil {
+				fmt.Errorf("relay error: %s", err)
+				continue
+			}
+
+			defer relay.Close()
+		}
+
+		getUsersInfo(ctx, exited, cfg.Users, pool, cfg.DiscoveryRelays)
 
 		conf, err := json.MarshalIndent(router, "", "  ")
 
