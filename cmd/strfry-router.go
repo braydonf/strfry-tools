@@ -316,7 +316,7 @@ func (g *ReqsCounter) Wait(max int) {
 
 var (
 	knf = koanf.New(".")
-	crn = cron.New(cron.WithSeconds())
+	crn = cron.New()
 	cfg Config
 	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
@@ -473,7 +473,7 @@ func getUsersInfo(
 
 			// Gather all of the pubkey contacts for the user.
 			var contacts = make([]string, 0)
-			if user.Depth >= 0 {
+			if user.Depth > 0 {
 				contacts = getUserFollows(ctx, exited, user.PubKey, pool, relays)
 			}
 
@@ -511,6 +511,40 @@ func getUsersInfo(
 			wg.Done()
 		}()
 	}
+
+	wg.Wait()
+}
+
+func writeConfigFiles() {
+	log.Info().Msg("writing config files")
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		conf, err := json.MarshalIndent(router, "", "  ")
+
+		if err != nil {
+			fmt.Errorf("marshal error: %s", err)
+		} else {
+			if err := os.WriteFile(cfg.RouterConfig, conf, 0666); err != nil {
+				fmt.Errorf("write error: %s", err)
+			}
+		}
+
+		pluginConf, err := json.MarshalIndent(plugin, "", "  ")
+
+		if err != nil {
+			fmt.Errorf("marshal error: %s", err)
+		} else {
+			if err := os.WriteFile(cfg.PluginConfig, pluginConf, 0666); err != nil {
+				fmt.Errorf("write error: %s", err)
+			}
+
+		}
+	}()
 
 	wg.Wait()
 }
@@ -563,32 +597,12 @@ func main() {
 		}
 
 		getUsersInfo(ctx, exited, cfg.Users, pool, cfg.DiscoveryRelays)
-
-		conf, err := json.MarshalIndent(router, "", "  ")
-
-		if err != nil {
-			fmt.Errorf("marshal error: %s", err)
-		} else {
-			if err := os.WriteFile(cfg.RouterConfig, conf, 0666); err != nil {
-				fmt.Errorf("write error: %s", err)
-			}
-		}
-
-		pluginConf, err := json.MarshalIndent(plugin, "", "  ")
-
-		if err != nil {
-			fmt.Errorf("marshal error: %s", err)
-		} else {
-			if err := os.WriteFile(cfg.PluginConfig, pluginConf, 0666); err != nil {
-				fmt.Errorf("write error: %s", err)
-			}
-
-		}
+		writeConfigFiles()
 	}
 
 	updateUsers()
 
-	crn.AddFunc("@every 10m", updateUsers)
+	crn.AddFunc("@every 24h", updateUsers)
 	crn.Start()
 
 	<-done
