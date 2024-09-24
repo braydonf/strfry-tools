@@ -42,20 +42,11 @@ users:
 	depth: 1
 	relay-depth: 1
 	dir: down
-  - name: "bob"
-	pubkey: "<32-byte-public-key-hex>"
-	depth: 2
-	relay-depth: 1
-	dir: both
-  - name: "carol"
-	pubkey: "<32-byte-public-key-hex>"
-	depth: 1
-	relay-depth: 1
-	dir: up
 ```
 
 - The `discovery-relays` are used to retrieve the `kind 10002` (NIP-65) relay list metadata for each pubkey that has been defined in `users`.
-- The `depth` defines how deep the `kind 3` contact/follow list will be navigated. In this example, the `depth` of `1` will filter, sync and permit only the contacts/follows of "alice" and a depth of `2` will filter, sync and permit contacts and contacts of contacts of "bob".
+- The `dir` option defines the direction of the stream. Values can be "down", "both" or "up".
+- The `depth` defines how deep the `kind 3` contact/follow list will be navigated. A `depth` of `1` will sync/stream the contacts/follows, a depth of `2` will sync/stream contacts and contacts of contacts. Note, there can be thousands to hundreds of thousands of contacts with `2` and more _(experimental)_.
 - The `relay-depth` option is the depth that relay list metadata is added to the config, it must be equal or less than the `depth`.
 - The `plugin-down` defines the location that the `strfry-router-plugin` executable is located and will be used for the `strfry router` configuration.
 - The `plugin-config` defines the configuration for the `strfry router` plugin, and will have a list of author pubkeys that will stream.

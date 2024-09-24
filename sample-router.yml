@@ -14,13 +14,3 @@ users:
     depth: 1
     relay-depth: 1
     dir: down
-  - name: "bob"
-    pubkey: "<32-byte-public-key-hex>"
-    depth: 2
-    relay-depth: 1
-    dir: both
-  - name: "carol"
-    pubkey: "<32-byte-public-key-hex>"
-    depth: 1
-    relay-depth: 1
-    dir: up
