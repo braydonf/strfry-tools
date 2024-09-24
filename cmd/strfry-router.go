@@ -38,7 +38,6 @@ type Config struct {
 	Users []User `koanf:"users"`
 }
 
-// StryFry write plugin config.
 type StrFryDownPlugin struct {
 	AuthorAllow []string `json:"author-allow"`
 	authorAllowMap map[string]bool
@@ -128,9 +127,6 @@ func (g *StrFryFilter) AuthorLength() int {
 	return len(g.Filter.Authors)
 }
 
-// StrFry router config.
-// - https://github.com/hoytech/strfry/blob/master/docs/router.md
-// - https://github.com/taocpp/config/blob/main/doc/Writing-Config-Files.md
 type StrFryStream struct {
 	Direction string `json:"dir"`
 	PluginDown string `json:"pluginDown,omitempty"`
@@ -184,27 +180,32 @@ type StrFryRouter struct {
 }
 
 func (g *StrFryRouter) PushToStream(user *User, relays []string, contacts []string) {
-	if len(g.currentUp) == 0 {
-		g.currentUpIndex = 0
-		g.currentUp = "depth-0-up-0"
-		g.Streams[g.currentUp] = NewStrFryStream("up", "")
-	}
+	dir := user.Direction
 
-	if len(g.currentDown) == 0 {
-		g.currentDownIndex = 0
-		g.currentDown = "depth-0-down-0"
-		g.Streams[g.currentDown] = NewStrFryStream("down", cfg.PluginDown)
-	}
-
-	if len(g.currentBoth) == 0 {
-		g.currentBothIndex = 0
-		g.currentBoth = "depth-0-both-0"
-		g.Streams[g.currentBoth] = NewStrFryStream("both", cfg.PluginDown)
+	switch dir {
+	case "up":
+		if len(g.currentUp) == 0 {
+			g.currentUpIndex = 0
+			g.currentUp = "depth-0-up-0"
+			g.Streams[g.currentUp] = NewStrFryStream("up", "")
+		}
+		break
+	case "down":
+		if len(g.currentDown) == 0 {
+			g.currentDownIndex = 0
+			g.currentDown = "depth-0-down-0"
+			g.Streams[g.currentDown] = NewStrFryStream("down", cfg.PluginDown)
+		}
+		break
+	case "both":
+		if len(g.currentBoth) == 0 {
+			g.currentBothIndex = 0
+			g.currentBoth = "depth-0-both-0"
+			g.Streams[g.currentBoth] = NewStrFryStream("both", cfg.PluginDown)
+		}
 	}
 
 	var stream *StrFryStream
-
-	dir := user.Direction
 
 	switch dir {
 	case "up":
@@ -412,7 +413,7 @@ func getUserRelayMeta(
 			results = append(results, relay)
 		}
 	} else {
-		log.Warn().Msg("unexpected no relay meta result")
+		log.Warn().Str("pubkey", pubkey).Msg("no relay meta")
 	}
 
 	return results
@@ -445,7 +446,7 @@ func getUserFollows(
 			}
 		}
 	} else {
-		log.Warn().Msg("unexpected no follow list result")
+		log.Warn().Str("pubkey", pubkey).Msg("no follow list")
 	}
 
 	return pubkeys
@@ -462,7 +463,7 @@ func getUsersInfo(
 	wg.Add(len(users))
 
 	for _, user := range users {
-		log.Info().Str("user", user.PubKey).Int("depth", user.Depth).Msg("starting...")
+		log.Info().Str("pubkey", user.PubKey).Int("depth", user.Depth).Msg("requesting info")
 
 		go func() {
 			// Gather all of the relays for the user.
@@ -480,7 +481,7 @@ func getUsersInfo(
 			// Now add this user to the router.
 			router.PushToStream(&user, userRelays, contacts)
 
-			log.Info().Str("user", user.PubKey).Msg("...ended")
+			log.Info().Str("pubkey", user.PubKey).Msg("added to router")
 
 			// Now keep going for the next depth.
 			if user.Depth > 0 {
