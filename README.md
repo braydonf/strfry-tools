@@ -25,7 +25,7 @@ cp strfry-router-plugin /usr/local/bin/strfry-router-plugin
 ### Configuration
 
 Example configuration (`sample-router.yml`):
-```
+```yaml
 log-level: "debug"
 
 discovery-relays:
