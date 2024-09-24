@@ -38,10 +38,10 @@ router-config: "/var/local/strfry-router.config"
 
 users:
   - name: "alice"
-	pubkey: "<32-byte-public-key-hex>"
-	depth: 1
-	relay-depth: 1
-	dir: down
+    pubkey: "<32-byte-public-key-hex>"
+    depth: 1
+    relay-depth: 1
+    dir: down
 ```
 
 - The `discovery-relays` are used to retrieve the `kind 10002` (NIP-65) relay list metadata for each pubkey that has been defined in `users`.
