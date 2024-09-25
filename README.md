@@ -1,19 +1,15 @@
 # strfry-tools
 
-This is a collection of programs and plugins for administrating a [strfry](https://github.com/hoytech/strfry) relay for the [Nostr protocol](https://github.com/nostr-protocol/nips).
+A set of tools for [strfry](https://github.com/hoytech/strfry) relays for the [Nostr protocol](https://github.com/nostr-protocol/nips).
 
-Included tools:
+Included programs:
 - `strfry-router` This will help configure a `strfry router` to create user specific relay-to-relay network topology.
 - `strfry-router-plugin` This is a write policy plugin for `stryfry` to be able to permit specific event authors via streams in a `strfry router`.
 - `strfry-write-plugin` This is a standalone write policy plugin.
 
 ## Router
 
-This programs configures a `strfry router` to have different user specific relay-to-relay topology. It will configure a network of relays based on a set of configured root pubkeys and their `kind 3` (NIP-02) contact/follow lists and `kind 10002` (NIP-65) relay list metada ("outbox model") and syncing/streaming events for their contacts.
-
-The network can be extended to different depths. A depth of `1` will sync contacts, a depth of `2` will sync contacts and contacts of contacts, and etcetera. Each contact can be streamed/synced `down`, `up` or in `both` directions.
-
-The `negentropy` Nostr protocol extension is used to sync notes for complete and bandwidth efficient syncronization.
+This programs configures a `strfry router` to have user specific relay-to-relay topology based on a set of configured root pubkeys. Their `kind 3` (NIP-02) contact/follow lists and `kind 10002` (NIP-65) relay list metadata ("outbox model") are retreived for syncing and streaming events for them and their contacts through their relays. The `negentropy` Nostr protocol extension is used to sync notes for complete and bandwidth efficient syncronization.
 
 ### Build & Install
 
@@ -33,8 +29,8 @@ discovery-relays:
   - "wss://domian2.tld"
 
 plugin-down: "/usr/bin/local/strfry-router-plugin"
-plugin-config: "/var/local/strfry-router-plugin.json"
-router-config: "/var/local/strfry-router.config"
+plugin-config: "/var/local/strfry/router-plugin"
+router-config: "/var/local/strfry/router.config"
 
 users:
   - name: "alice"
@@ -44,14 +40,19 @@ users:
     dir: down
 ```
 
-- The `discovery-relays` are used to retrieve the `kind 10002` (NIP-65) relay list metadata for each pubkey that has been defined in `users`.
-- The `dir` option defines the direction of the stream. Values can be "down", "both" or "up".
-- The `depth` defines how deep the `kind 3` contact/follow list will be navigated. A `depth` of `1` will sync/stream the contacts/follows, a depth of `2` will sync/stream contacts and contacts of contacts. Note, there can be thousands to hundreds of thousands of contacts with `2` and more _(experimental)_.
-- The `relay-depth` option is the depth that relay list metadata is added to the config, it must be equal or less than the `depth`.
-- The `plugin-down` defines the location that the `strfry-router-plugin` executable is located and will be used for the `strfry router` configuration.
-- The `plugin-config` defines the configuration for the `strfry router` plugin, and will have a list of author pubkeys that will stream.
-- The `router-config` is the location of the `strfry router` configuration.
-- The `log-level` defines the verbosity of logs. The options include from less verbose to most: "panic", "fatal", "error", "warn", "info", "debug" and "trace".
+Main options:
+- `log-level` defines the verbosity of logs. The options include from less verbose to most: "panic", "fatal", "error", "warn", "info", "debug" and "trace".
+- `discovery-relays` are used to retrieve the `kind 10002` (NIP-65) relay list metadata for each pubkey that has been defined in `users`.
+- `plugin-down` defines the location of the `strfry-router-plugin` executable for a `strfry router`.
+- `plugin-config` defines the configuration base path for the `strfry router` plugin. It shouldn't include an extension as it is a base path to create mulitple files.
+- `router-config` is the location of the `strfry router` configuration.
+- `users` defines the set of root pubkeys that will have their `kind 3` and `kind 10002` events used to define the router streams.
+
+Other user options:
+- `pubkey` is the hex encoding of a Nostr user's public key
+- `dir` defines the direction of the stream. Values can be "down", "both" or "up".
+- `depth` defines how deep the `kind 3` contact/follow list will be navigated (it is usually left as `1`).
+- `relay-depth` option is the depth that relay list metadata is added to the config, it must be equal or less than the `depth`.
 
 ### Running
 
@@ -62,7 +63,7 @@ To run the program:
 
 This will start a daemon process that will create the configuration files necessary to run a `strfry router`. Please see `strfry` [router documentation](https://github.com/hoytech/strfry/blob/master/docs/router.md) for further information about [installing](https://github.com/hoytech/strfry?tab=readme-ov-file#setup) and running the router. The `strfry router` will reload modifications to the config made from this daemon automatically. Similarly the config for the plugin will also met reloaded, thus changes can be made to the topology without restarting the processes.
 
-## Write Policy Plugin
+## Write Plugin
 
 This is a standalone simple plugin for configuring the write policy of a `strfry relay`. This can be with our without running a `strfry router`.
 
