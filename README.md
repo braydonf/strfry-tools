@@ -9,7 +9,7 @@ Included programs:
 
 ## Router
 
-This programs configures a `strfry router` to have user specific relay-to-relay topology based on a set of configured root pubkeys. Their `kind 3` (NIP-02) contact/follow lists and `kind 10002` (NIP-65) relay list metadata ("outbox model") are retreived for syncing and streaming events for them and their contacts through their relays. The `negentropy` Nostr protocol extension is used to sync notes for complete and bandwidth efficient syncronization.
+This program configures a `strfry router` to have user specific relay-to-relay topology based on a set of configured root pubkeys. Their `kind 3` (NIP-02) contact/follow lists and `kind 10002` (NIP-65) relay list metadata ("outbox model") are retrieved for syncing and streaming events for them and their contacts through their relays. The `negentropy` Nostr protocol extension is used to sync notes for complete and bandwidth efficient synchronization.
 
 ### Build & Install
 
@@ -44,7 +44,7 @@ Main options:
 - `log-level` defines the verbosity of logs. The options include from less verbose to most: "panic", "fatal", "error", "warn", "info", "debug" and "trace".
 - `discovery-relays` are used to retrieve the `kind 10002` (NIP-65) relay list metadata for each pubkey that has been defined in `users`.
 - `plugin-down` defines the location of the `strfry-router-plugin` executable for a `strfry router`.
-- `plugin-config` defines the configuration base path for the `strfry router` plugin. It shouldn't include an extension as it is a base path to create mulitple files.
+- `plugin-config` defines the configuration base path for the `strfry router` plugin. It shouldn't include an extension as it is a base path to create multiple files.
 - `router-config` is the location of the `strfry router` configuration.
 - `users` defines the set of root pubkeys that will have their `kind 3` and `kind 10002` events used to define the router streams.
 
