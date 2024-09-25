@@ -33,9 +33,11 @@ discovery-relays:
   - "wss://domain1.tld"
   - "wss://domian2.tld"
 
-plugin-down: "/usr/bin/local/strfry-router-plugin"
-plugin-config: "/var/local/strfry/router-plugin"
+router-plugin-down: "/usr/bin/local/strfry-router-plugin"
+router-plugin-config: "/var/local/strfry/router-plugin"
 router-config: "/var/local/strfry/router.config"
+sync-config: "/var/local/strfry/sync.json"
+sync-strfry: "/var/bin/local/strfry"
 
 users:
   - name: "alice"
@@ -48,9 +50,11 @@ users:
 Main options:
 - `log-level` defines the verbosity of logs. The options include from less verbose to most: "panic", "fatal", "error", "warn", "info", "debug" and "trace".
 - `discovery-relays` are used to retrieve the `kind 10002` (NIP-65) relay list metadata for each pubkey that has been defined in `users`.
-- `plugin-down` defines the location of the `strfry-router-plugin` executable for a `strfry router`.
-- `plugin-config` defines the configuration base path for the `strfry router` plugin. It shouldn't include an extension as it is a base path to create multiple files.
+- `router-plugin-down` defines the location of the `strfry-router-plugin` executable for a `strfry router`.
+- `router-plugin-config` defines the configuration base path for the `strfry router` plugin. It shouldn't include an extension as it is a base path to create multiple files.
 - `router-config` is the location of the `strfry router` configuration.
+- `sync-config` is the location of the `strfry-sync` configuration file.
+- `sync-strfry` is the location of the `strfry` executable.
 - `users` defines the set of root pubkeys that will have their `kind 3` and `kind 10002` events used to define the router streams.
 
 Other user options:
