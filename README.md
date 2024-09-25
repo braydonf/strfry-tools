@@ -3,12 +3,14 @@
 A set of tools for [strfry](https://github.com/hoytech/strfry) relays for the [Nostr protocol](https://github.com/nostr-protocol/nips).
 
 Included programs:
-- `strfry-config` This will auto generate configs based on user defined pubkeys for streaming and syncing a network of contacts.
-- `strfry-sync` This will sync contacts using `negentropy` with `strfry sync`.
+- `strfry-config` This will auto generate configs for a `stryfry router` and for `strfry-sync` based on user pubkeys for streaming and syncing a network of contacts.
+- `strfry-sync` This will sync a network of contacts using `negentropy` with `strfry sync`.
+
+Other plugins:
 - `strfry-router-plugin` This is a write policy plugin for `stryfry router` to only allow specific event authors.
 - `strfry-write-plugin` This is a standalone write policy plugin for a `strfry relay`.
 
-## Config
+## Config Generator
 
 This program (`strfry-config`) creates configuration files based on a set of configured root pubkeys. Their `kind 3` (NIP-02) contact/follow lists and `kind 10002` (NIP-65) relay list metadata ("outbox model") are retrieved for syncing streaming events for them and their contacts through their relays.
 
@@ -19,7 +21,7 @@ There are several output files:
 ### Build & Install
 
 ```bash
-make router router-plugin
+make
 cp strfry-router /usr/local/bin/strfry-router
 cp strfry-router-plugin /usr/local/bin/strfry-router-plugin
 ```
@@ -79,7 +81,7 @@ This is a standalone simple plugin for configuring the write policy of a `strfry
 ### Build & Install
 
 ```bash
-make write-plugin
+make
 cp strfry-write-plugin /usr/local/bin/strfry-write-plugin
 ```
 
