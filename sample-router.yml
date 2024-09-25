@@ -7,6 +7,8 @@ discovery-relays:
 plugin-down: "/usr/bin/local/strfry-router-plugin"
 plugin-config: "/var/local/strfry/router-plugin"
 router-config: "/var/local/strfry/router.config"
+sync-config: "/var/local/strfry/sync.json"
+sync-strfry: "/var/bin/local/strfry"
 
 users:
   - name: "alice"

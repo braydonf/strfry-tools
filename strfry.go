@@ -16,16 +16,41 @@ const (
 )
 
 type SyncUser struct {
-	Direction string `koanf:"dir"`
-	PubKey string `koanf:"pubkey"`
-	Relays []string `koanf:"relays"`
+	Direction string `json:"dir"`
+	PubKey string `json:"pubkey"`
+	Relays []string `json:"relays"`
 }
 
 type SyncConfig struct {
-	LogLevel string `koanf:"log-level"`
-	Users []SyncUser `koanf:"users"`
-	StrFryBin string `koanf:"strfry-bin"`
-	StrFryConf string `koanf:"strfry-conf"`
+	LogLevel string `json:"log-level"`
+	StrFryBin string `json:"strfry-bin"`
+	Users []*SyncUser `json:"users"`
+	usersMap map[string]bool
+	usersMutex sync.RWMutex
+}
+
+func NewSyncConfig() SyncConfig {
+	return SyncConfig{
+		Users: make([]*SyncUser, 0),
+		usersMap: make(map[string]bool),
+	}
+}
+
+func (g *SyncConfig) hasUser(user *SyncUser) bool {
+	if _, ok := g.usersMap[user.PubKey]; ok {
+		return true
+	} else {
+		g.usersMap[user.PubKey] = true
+		return false
+	}
+}
+
+func (g *SyncConfig) AppendUniqueUser(user *SyncUser) {
+	g.usersMutex.Lock()
+	defer g.usersMutex.Unlock()
+	if !g.hasUser(user) {
+		g.Users = append(g.Users, user)
+	}
 }
 
 type RouterUser struct {
@@ -41,6 +66,8 @@ type RouterConfig struct {
 	PluginDown string `koanf:"plugin-down"`
 	PluginConfig string `koanf:"plugin-config"`
 	RouterConfig string `koanf:"router-config"`
+	SyncConfig string `koanf:"sync-config"`
+	StrFryBin string `koanf:"sync-strfry"`
 	DiscoveryRelays []string `koanf:"discovery-relays"`
 	Users []RouterUser `koanf:"users"`
 }

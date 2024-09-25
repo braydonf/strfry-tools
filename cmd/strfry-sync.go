@@ -15,23 +15,6 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
-type User struct {
-	Name string `koanf:"name"`
-	PubKey string `koanf:"pubkey"`
-	Depth int `koanf:"depth"`
-	RelayDepth int `koanf:"relay-depth"`
-	Direction string `koanf:"dir"`
-}
-
-type Config struct {
-	LogLevel string `koanf:"log-level"`
-	PluginDown string `koanf:"plugin-down"`
-	PluginConfig string `koanf:"plugin-config"`
-	RouterConfig string `koanf:"router-config"`
-	DiscoveryRelays []string `koanf:"discovery-relays"`
-	Users []User `koanf:"users"`
-}
-
 var (
 	knf = koanf.New(".")
 	cfg strfry.SyncConfig

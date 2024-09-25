@@ -22,16 +22,6 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
-var (
-	knf = koanf.New(".")
-	crn = cron.New()
-	cfg strfry.RouterConfig
-	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
-
-	router strfry.Router
-	counter ReqsCounter
-)
-
 type ReqsCounter struct {
 	mutex sync.Mutex
 	count int
@@ -77,6 +67,17 @@ func (g *ReqsCounter) Wait(max int) {
 
 	wg.Wait()
 }
+
+var (
+	knf = koanf.New(".")
+	crn = cron.New()
+	cfg strfry.RouterConfig
+	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
+	router strfry.Router
+	syncer strfry.SyncConfig
+	counter ReqsCounter
+)
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
@@ -234,9 +235,18 @@ func getUsersInfo(
 
 			if err != nil {
 				log.Warn().Err(err).Msg("error adding to stream")
+			} else {
+				log.Info().Str("pubkey", user.PubKey).Msg("added to router")
 			}
 
-			log.Info().Str("pubkey", user.PubKey).Msg("added to router")
+			// Add to the sync config.
+			if len(userRelays) > 0 {
+				syncer.AppendUniqueUser(&strfry.SyncUser{
+					Direction: user.Direction,
+					PubKey: user.PubKey,
+					Relays: userRelays,
+				})
+			}
 
 			// Now keep going for the next depth.
 			if user.Depth > 0 {
@@ -289,6 +299,16 @@ func writeConfigFile() {
 				fmt.Errorf("write error: %s", err)
 			}
 		}
+
+		syncConf, err := json.MarshalIndent(syncer, "", "  ")
+
+		if err != nil {
+			fmt.Errorf("marshal error: %s", err)
+		} else {
+			if err := os.WriteFile(cfg.SyncConfig, syncConf, 0666); err != nil {
+				fmt.Errorf("write error: %s", err)
+			}
+		}
 	}()
 
 	wg.Wait()
@@ -322,6 +342,11 @@ func main() {
 
 	// Now do Nostr requests and other things.
 	ctx := context.Background()
+
+	// Set some of the sync config values.
+	syncer = strfry.NewSyncConfig()
+	syncer.StrFryBin = cfg.StrFryBin
+	syncer.LogLevel = cfg.LogLevel
 
 	updateUsers := func() {
 		ctx, cancel := context.WithCancel(ctx)
