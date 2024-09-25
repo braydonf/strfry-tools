@@ -15,6 +15,25 @@ const (
 	MaxConcurrentReqs = 10
 )
 
+type User struct {
+	Name string `koanf:"name"`
+	PubKey string `koanf:"pubkey"`
+	Depth int `koanf:"depth"`
+	RelayDepth int `koanf:"relay-depth"`
+	Direction string `koanf:"dir"`
+}
+
+type Config struct {
+	LogLevel string `koanf:"log-level"`
+	PluginDown string `koanf:"plugin-down"`
+	PluginConfig string `koanf:"plugin-config"`
+	RouterConfig string `koanf:"router-config"`
+	SyncConfig string `koanf:"sync-config"`
+	StrFryBin string `koanf:"sync-strfry"`
+	DiscoveryRelays []string `koanf:"discovery-relays"`
+	Users []User `koanf:"users"`
+}
+
 type SyncUser struct {
 	Direction string `json:"dir"`
 	PubKey string `json:"pubkey"`
@@ -51,25 +70,6 @@ func (g *SyncConfig) AppendUniqueUser(user *SyncUser) {
 	if !g.hasUser(user) {
 		g.Users = append(g.Users, user)
 	}
-}
-
-type RouterUser struct {
-	Name string `koanf:"name"`
-	PubKey string `koanf:"pubkey"`
-	Depth int `koanf:"depth"`
-	RelayDepth int `koanf:"relay-depth"`
-	Direction string `koanf:"dir"`
-}
-
-type RouterConfig struct {
-	LogLevel string `koanf:"log-level"`
-	PluginDown string `koanf:"plugin-down"`
-	PluginConfig string `koanf:"plugin-config"`
-	RouterConfig string `koanf:"router-config"`
-	SyncConfig string `koanf:"sync-config"`
-	StrFryBin string `koanf:"sync-strfry"`
-	DiscoveryRelays []string `koanf:"discovery-relays"`
-	Users []RouterUser `koanf:"users"`
 }
 
 type DownPlugin struct {
@@ -161,7 +161,7 @@ func (g *Filter) AuthorLength() int {
 	return len(g.Filter.Authors)
 }
 
-type Stream struct {
+type RouterStream struct {
 	Direction string `json:"dir"`
 	PluginDown string `json:"pluginDown,omitempty"`
 	PluginUp string `json:"pluginUp,omitempty"`
@@ -172,8 +172,8 @@ type Stream struct {
 	pluginDown *DownPlugin
 }
 
-func NewStream(dir string, pluginPath string) *Stream {
-	stream := &Stream{
+func NewRouterStream(dir string, pluginPath string) *RouterStream {
+	stream := &RouterStream{
 		Direction: dir,
 		Relays: make([]string, 0),
 		Filter: NewFilter(),
@@ -187,7 +187,7 @@ func NewStream(dir string, pluginPath string) *Stream {
 	return stream
 }
 
-func (g *Stream) hasRelay(relay string) bool {
+func (g *RouterStream) hasRelay(relay string) bool {
 	if _, ok := g.relaysMap[relay]; ok {
 		return true
 	} else {
@@ -196,23 +196,23 @@ func (g *Stream) hasRelay(relay string) bool {
 	}
 }
 
-func (g *Stream) SetNewPlugin() {
+func (g *RouterStream) SetNewPlugin() {
 	g.pluginDown = NewDownPlugin()
 }
 
-func (g *Stream) SetPlugin(plugin *DownPlugin) {
+func (g *RouterStream) SetPlugin(plugin *DownPlugin) {
 	g.pluginDown = plugin
 }
 
-func (g *Stream) GetPlugin() *DownPlugin {
+func (g *RouterStream) GetPlugin() *DownPlugin {
 	return g.pluginDown
 }
 
-func (g *Stream) PluginAppendUniqueAuthor(pubkey string) {
+func (g *RouterStream) PluginAppendUniqueAuthor(pubkey string) {
 	g.pluginDown.AppendUniqueAuthor(pubkey)
 }
 
-func (g *Stream) AppendUniqueRelay(relay string) {
+func (g *RouterStream) AppendUniqueRelay(relay string) {
 	g.relaysMutex.Lock()
 	defer g.relaysMutex.Unlock()
 	if !g.hasRelay(relay) {
@@ -220,7 +220,7 @@ func (g *Stream) AppendUniqueRelay(relay string) {
 	}
 }
 
-func (g *Stream) WritePluginConfig(path string) error {
+func (g *RouterStream) WritePluginConfig(path string) error {
 	conf, err := json.MarshalIndent(g.pluginDown, "", "  ")
 
 	if err != nil {
@@ -234,14 +234,14 @@ func (g *Stream) WritePluginConfig(path string) error {
 	return nil
 }
 
-type Router struct {
-	Streams map[string]*Stream `json:"streams"`
+type RouterConfig struct {
+	Streams map[string]*RouterStream `json:"streams"`
 	streamsMutex sync.RWMutex
 }
 
-func (g *Router) AddUser(
-	cfg *RouterConfig,
-	user *RouterUser,
+func (g *RouterConfig) AddUser(
+	cfg *Config,
+	user *User,
 	relays []string,
 	contacts []string) error {
 
@@ -257,9 +257,9 @@ func (g *Router) AddUser(
 	streamName := fmt.Sprintf("pk-%s-%d", user.PubKey, streamIndex)
 
 	if dir == "up" {
-		g.Streams[streamName] = NewStream("up", "")
+		g.Streams[streamName] = NewRouterStream("up", "")
 	} else if dir == "down" || dir == "both" {
-		g.Streams[streamName] = NewStream(dir, pluginCmd)
+		g.Streams[streamName] = NewRouterStream(dir, pluginCmd)
 	}
 
 	stream := g.Streams[streamName]
@@ -280,7 +280,7 @@ func (g *Router) AddUser(
 				streamIndex++
 				streamName = fmt.Sprintf("pk-%s-%d", user.PubKey, streamIndex)
 				pluginDown := stream.GetPlugin()
-				g.Streams[streamName] = NewStream(dir, pluginCmd)
+				g.Streams[streamName] = NewRouterStream(dir, pluginCmd)
 				stream = g.Streams[streamName]
 				stream.SetPlugin(pluginDown)
 			}

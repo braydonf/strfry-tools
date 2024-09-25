@@ -1,10 +1,10 @@
-all: sync router router-plugin write-plugin
+all: config sync router-plugin write-plugin
+
+config:
+	go build -o strfry-config ./cmd/strfry-config.go
 
 sync:
 	go build -o strfry-sync ./cmd/strfry-sync.go
-
-router:
-	go build -o strfry-router ./cmd/strfry-router.go
 
 router-plugin:
 	go build -o strfry-router-plugin ./cmd/strfry-router-plugin.go
@@ -14,7 +14,7 @@ write-plugin:
 
 clean:
 	rm strfry-sync
-	rm strfry-router
+	rm strfry-config
 	rm strfry-router-plugin
 	rm strfry-write-plugin
 	go clean

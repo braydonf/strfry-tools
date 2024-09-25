@@ -3,13 +3,18 @@
 A set of tools for [strfry](https://github.com/hoytech/strfry) relays for the [Nostr protocol](https://github.com/nostr-protocol/nips).
 
 Included programs:
-- `strfry-router` This will help configure a `strfry router` to create user specific relay-to-relay network topology.
-- `strfry-router-plugin` This is a write policy plugin for `stryfry` to be able to permit specific event authors via streams in a `strfry router`.
-- `strfry-write-plugin` This is a standalone write policy plugin.
+- `strfry-config` This will auto generate configs based on user defined pubkeys for streaming and syncing a network of contacts.
+- `strfry-sync` This will sync contacts using `negentropy` with `strfry sync`.
+- `strfry-router-plugin` This is a write policy plugin for `stryfry router` to only allow specific event authors.
+- `strfry-write-plugin` This is a standalone write policy plugin for a `strfry relay`.
 
-## Router
+## Config
 
-This program configures a `strfry router` to have user specific relay-to-relay topology based on a set of configured root pubkeys. Their `kind 3` (NIP-02) contact/follow lists and `kind 10002` (NIP-65) relay list metadata ("outbox model") are retrieved for syncing and streaming events for them and their contacts through their relays. The `negentropy` Nostr protocol extension is used to sync notes for complete and bandwidth efficient synchronization.
+This program (`strfry-config`) creates configuration files based on a set of configured root pubkeys. Their `kind 3` (NIP-02) contact/follow lists and `kind 10002` (NIP-65) relay list metadata ("outbox model") are retrieved for syncing streaming events for them and their contacts through their relays.
+
+There are several output files:
+- A config file for a `strfry router` to have user specific relay-to-relay topology, this also includes many config files for `strfry router` write policy plugins.
+- A config for `strfry-sync` that uses `negentropy` to sync notes for complete and bandwidth efficient synchronization.
 
 ### Build & Install
 
@@ -58,7 +63,7 @@ Other user options:
 
 To run the program:
 ```bash
-./strfry-router --conf="</path/to/router.yml>"
+./strfry-config --conf="</path/to/config.yml>"
 ```
 
 This will start a daemon process that will create the configuration files necessary to run a `strfry router`. Please see `strfry` [router documentation](https://github.com/hoytech/strfry/blob/master/docs/router.md) for further information about [installing](https://github.com/hoytech/strfry?tab=readme-ov-file#setup) and running the router. The `strfry router` will reload modifications to the config made from this daemon automatically. Similarly the config for the plugin will also met reloaded, thus changes can be made to the topology without restarting the processes.

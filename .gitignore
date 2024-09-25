@@ -1,9 +1,9 @@
 *~
-router.yml
+config.yml
 write.yml
 strfry-sync
 strfry-router-plugin.json
 strfry-router.config
-strfry-router
+strfry-config
 strfry-router-plugin
 strfry-write-plugin

@@ -71,10 +71,10 @@ func (g *ReqsCounter) Wait(max int) {
 var (
 	knf = koanf.New(".")
 	crn = cron.New()
-	cfg strfry.RouterConfig
+	cfg strfry.Config
 	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	router strfry.Router
+	router strfry.RouterConfig
 	syncer strfry.SyncConfig
 	counter ReqsCounter
 )
@@ -207,7 +207,7 @@ func getUserFollows(
 func getUsersInfo(
 	ctx context.Context,
 	exited chan struct{},
-	users []strfry.RouterUser,
+	users []strfry.User,
 	pool *nostr.SimplePool,
 	relays []string) {
 
@@ -250,11 +250,11 @@ func getUsersInfo(
 
 			// Now keep going for the next depth.
 			if user.Depth > 0 {
-				nextUsers := make([]strfry.RouterUser, 0)
+				nextUsers := make([]strfry.User, 0)
 
 				if user.Direction == "down" || user.Direction == "both" {
 					for _, hex := range contacts {
-						nextUsers = append(nextUsers, strfry.RouterUser{
+						nextUsers = append(nextUsers, strfry.User{
 							PubKey: hex,
 							Depth: user.Depth - 1,
 							RelayDepth: user.RelayDepth - 1,
@@ -316,7 +316,7 @@ func writeConfigFile() {
 
 func main() {
 	// Setup the router and plugin.
-	router.Streams = make(map[string]*strfry.Stream)
+	router.Streams = make(map[string]*strfry.RouterStream)
 
 	// Used to keep the process open and watch for
 	// system signals to interrupt the process.
@@ -412,7 +412,7 @@ func SetupFlags() *flag.FlagSet {
 
 	f.StringSlice(
 		"conf",
-		[]string{"router.yml"},
+		[]string{"config.yml"},
 		"path to one or more .yml router config files")
 
 	f.Parse(os.Args[1:])
@@ -420,7 +420,7 @@ func SetupFlags() *flag.FlagSet {
 	return f
 }
 
-func LoadConfig(f *flag.FlagSet, cfg *strfry.RouterConfig) {
+func LoadConfig(f *flag.FlagSet, cfg *strfry.Config) {
 	// Load the config files provided in the commandline.
 	filepaths, _ := f.GetStringSlice("conf")
 	for _, c := range filepaths {
