@@ -5,8 +5,8 @@ discovery-relays:
   - "wss://domian2.tld"
 
 plugin-down: "/usr/bin/local/strfry-router-plugin"
-plugin-config: "/var/local/strfry-router-plugin.json"
-router-config: "/var/local/strfry-router.config"
+plugin-config: "/var/local/strfry/router-plugin"
+router-config: "/var/local/strfry/router.config"
 
 users:
   - name: "alice"

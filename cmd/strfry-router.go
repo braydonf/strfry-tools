@@ -44,8 +44,8 @@ type StrFryDownPlugin struct {
 	authorAllowMutex sync.RWMutex
 }
 
-func NewStrFryDownPlugin() StrFryDownPlugin {
-	return StrFryDownPlugin{
+func NewStrFryDownPlugin() *StrFryDownPlugin {
+	return &StrFryDownPlugin{
 		AuthorAllow: make([]string, 0),
 		authorAllowMap: make(map[string]bool),
 	}
@@ -135,6 +135,7 @@ type StrFryStream struct {
 	Filter *StrFryFilter `json:"filter,omitempty"`
 	relaysMap map[string]bool
 	relaysMutex sync.RWMutex
+	pluginDown *StrFryDownPlugin
 }
 
 func NewStrFryStream(dir string, pluginPath string) *StrFryStream {
@@ -196,9 +197,9 @@ func (g *StrFryRouter) PushToStream(user *User, relays []string, contacts []stri
 
 	if dir == "down" || dir == "both" {
 		stream.Filter.AppendUniqueAuthor(user.PubKey)
+		stream.pluginDown = NewStrFryDownPlugin()
+		stream.pluginDown.AppendUniqueAuthor(user.PubKey)
 	}
-
-	plugin.AppendUniqueAuthor(user.PubKey)
 
 	for _, relay := range relays {
 		stream.AppendUniqueRelay(relay)
@@ -209,14 +210,19 @@ func (g *StrFryRouter) PushToStream(user *User, relays []string, contacts []stri
 			if (index + 2) % FilterMaxAuthors == 0 {
 				streamIndex++
 				streamName = fmt.Sprintf("pk-%s-%d", user.PubKey, streamIndex)
+				pluginDown := stream.pluginDown
 				g.Streams[streamName] = NewStrFryStream(dir, pluginCmd)
 				stream = g.Streams[streamName]
+				stream.pluginDown = pluginDown
 			}
 
 			stream.Filter.AppendUniqueAuthor(hex)
-			plugin.AppendUniqueAuthor(hex)
+			stream.pluginDown.AppendUniqueAuthor(hex)
 		}
 	}
+
+	// Save the plugin configuration.
+	writePluginConfig(pluginConf, stream.pluginDown)
 }
 
 const (
@@ -278,8 +284,6 @@ var (
 	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	router StrFryRouter
-	plugin StrFryDownPlugin
-
 	counter ReqsCounter
 )
 
@@ -472,8 +476,32 @@ func getUsersInfo(
 	wg.Wait()
 }
 
-func writeConfigFiles() {
-	log.Info().Msg("writing config files")
+func writePluginConfig(path string, plugin *StrFryDownPlugin) {
+	log.Info().Msg("writing plugin config file")
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		conf, err := json.MarshalIndent(plugin, "", "  ")
+
+		if err != nil {
+			fmt.Errorf("marshal error: %s", err)
+		} else {
+			if err := os.WriteFile(path, conf, 0666); err != nil {
+				fmt.Errorf("write error: %s", err)
+			}
+
+		}
+	}()
+
+	wg.Wait()
+}
+
+func writeConfigFile() {
+	log.Info().Msg("writing config file")
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -490,17 +518,6 @@ func writeConfigFiles() {
 				fmt.Errorf("write error: %s", err)
 			}
 		}
-
-		pluginConf, err := json.MarshalIndent(plugin, "", "  ")
-
-		if err != nil {
-			fmt.Errorf("marshal error: %s", err)
-		} else {
-			if err := os.WriteFile(cfg.PluginConfig, pluginConf, 0666); err != nil {
-				fmt.Errorf("write error: %s", err)
-			}
-
-		}
 	}()
 
 	wg.Wait()
@@ -509,7 +526,6 @@ func writeConfigFiles() {
 func main() {
 	// Setup the router and plugin.
 	router.Streams = make(map[string]*StrFryStream)
-	plugin = NewStrFryDownPlugin()
 
 	// Used to keep the process open and watch for
 	// system signals to interrupt the process.
@@ -554,7 +570,7 @@ func main() {
 		}
 
 		getUsersInfo(ctx, exited, cfg.Users, pool, cfg.DiscoveryRelays)
-		writeConfigFiles()
+		writeConfigFile()
 	}
 
 	updateUsers()

@@ -29,7 +29,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	f.String("conf", "strfry-wot-plugin.json", "path to .json config file")
+	f.String("conf", "strfry-plugin.json", "path to .json config file")
 	f.Parse(os.Args[1:])
 
 	filepath, err := f.GetString("conf")
