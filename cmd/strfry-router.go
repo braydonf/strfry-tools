@@ -171,80 +171,28 @@ func (g *StrFryStream) AppendUniqueRelay(relay string) {
 
 type StrFryRouter struct {
 	Streams map[string]*StrFryStream `json:"streams"`
-	currentUp string
-	currentUpIndex int
-	currentDown string
-	currentDownIndex int
-	currentBoth string
-	currentBothIndex int
+	streamsMutex sync.RWMutex
 }
 
 func (g *StrFryRouter) PushToStream(user *User, relays []string, contacts []string) {
+	g.streamsMutex.Lock()
+	defer g.streamsMutex.Unlock()
+
 	dir := user.Direction
 
-	switch dir {
-	case "up":
-		if len(g.currentUp) == 0 {
-			g.currentUpIndex = 0
-			g.currentUp = "depth-0-up-0"
-			g.Streams[g.currentUp] = NewStrFryStream("up", "")
-		}
-		break
-	case "down":
-		if len(g.currentDown) == 0 {
-			g.currentDownIndex = 0
-			g.currentDown = "depth-0-down-0"
-			g.Streams[g.currentDown] = NewStrFryStream("down", cfg.PluginDown)
-		}
-		break
-	case "both":
-		if len(g.currentBoth) == 0 {
-			g.currentBothIndex = 0
-			g.currentBoth = "depth-0-both-0"
-			g.Streams[g.currentBoth] = NewStrFryStream("both", cfg.PluginDown)
-		}
+	pluginConf := fmt.Sprintf("%s-pk-%s.json", cfg.PluginConfig, user.PubKey)
+	pluginCmd := fmt.Sprintf("%s --conf=%s", cfg.PluginDown, pluginConf)
+
+	streamIndex := 0
+	streamName := fmt.Sprintf("pk-%s-%d", user.PubKey, streamIndex)
+
+	if dir == "up" {
+		g.Streams[streamName] = NewStrFryStream("up", "")
+	} else if dir == "down" || dir == "both" {
+		g.Streams[streamName] = NewStrFryStream(dir, pluginCmd)
 	}
 
-	var stream *StrFryStream
-
-	switch dir {
-	case "up":
-		stream = g.Streams[g.currentUp]
-
-		if (stream.Filter.AuthorLength() >= FilterMaxAuthors) {
-			g.currentUpIndex += 1
-			g.currentUp = fmt.Sprintf("depth-%d-up-%d", user.Depth, g.currentUpIndex)
-			g.Streams[g.currentUp] = NewStrFryStream("up", "")
-
-			stream = g.Streams[g.currentUp]
-		}
-
-		break
-	case "down":
-		stream = g.Streams[g.currentDown]
-
-		if (stream.Filter.AuthorLength() >= FilterMaxAuthors) {
-			g.currentDownIndex += 1
-			g.currentDown = fmt.Sprintf("depth-%d-down-%d", user.Depth, g.currentUpIndex)
-			g.Streams[g.currentDown] = NewStrFryStream("down", cfg.PluginDown)
-
-			stream = g.Streams[g.currentDown]
-		}
-
-		break
-	case "both":
-		stream = g.Streams[g.currentBoth]
-
-		if (stream.Filter.AuthorLength() >= FilterMaxAuthors) {
-			g.currentBothIndex += 1
-			g.currentBoth = fmt.Sprintf("depth-%d-both-%d", user.Depth, g.currentUpIndex)
-			g.Streams[g.currentBoth] = NewStrFryStream("both", cfg.PluginDown)
-
-			stream = g.Streams[g.currentBoth]
-		}
-
-		break
-	}
+	stream := g.Streams[streamName]
 
 	if dir == "down" || dir == "both" {
 		stream.Filter.AppendUniqueAuthor(user.PubKey)
@@ -256,8 +204,16 @@ func (g *StrFryRouter) PushToStream(user *User, relays []string, contacts []stri
 		stream.AppendUniqueRelay(relay)
 	}
 
-	for _, hex := range contacts {
+	for index, hex := range contacts {
 		if dir == "down" || dir == "both" {
+			if (index + 2) % FilterMaxAuthors == 0 {
+				streamIndex++
+				streamName = fmt.Sprintf("pk-%s-%d", user.PubKey, streamIndex)
+				g.Streams[streamName] = NewStrFryStream(dir, pluginCmd)
+				stream = g.Streams[streamName]
+			}
+
+			stream.Filter.AppendUniqueAuthor(hex)
 			plugin.AppendUniqueAuthor(hex)
 		}
 	}
@@ -474,7 +430,7 @@ func getUsersInfo(
 
 			// Gather all of the pubkey contacts for the user.
 			var contacts = make([]string, 0)
-			if user.Depth > 0 {
+			if user.Depth >= 0 {
 				contacts = getUserFollows(ctx, exited, user.PubKey, pool, relays)
 			}
 
