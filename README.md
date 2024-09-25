@@ -10,7 +10,7 @@ Included programs and plugins:
 
 ## Config Generator
 
-This program (`strfry-config`) creates configuration files based on a set of configured root pubkeys. Their `kind 3` (NIP-02) contact/follow lists and `kind 10002` (NIP-65) relay list metadata ("outbox model") are retrieved for syncing streaming events for them and their contacts through their relays.
+This program (`strfry-config`) creates configuration files based on a set of configured root pubkeys. Their `kind 3` (NIP-02) contact/follow lists and `kind 10002` (NIP-65) relay list metadata ("outbox model") are retrieved for syncing and streaming events for them and their contacts through their relays.
 
 There are several output files:
 - A config file for a `strfry router` to have user specific relay-to-relay topology, this also includes many config files for `strfry router` write policy plugins.
@@ -20,7 +20,7 @@ There are several output files:
 
 ```bash
 make
-cp strfry-router /usr/local/bin/strfry-router
+cp strfry-config /usr/local/bin/strfry-config
 cp strfry-router-plugin /usr/local/bin/strfry-router-plugin
 ```
 ### Configuration
