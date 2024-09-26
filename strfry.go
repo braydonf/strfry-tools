@@ -30,6 +30,7 @@ type Config struct {
 	RouterConfig string `koanf:"router-config"`
 	SyncConfig string `koanf:"sync-config"`
 	StrFryBin string `koanf:"sync-strfry"`
+	StrFryConfig string `koanf:"sync-strfry-config"`
 	DiscoveryRelays []string `koanf:"discovery-relays"`
 	Users []User `koanf:"users"`
 }
@@ -41,9 +42,10 @@ type SyncUser struct {
 }
 
 type SyncConfig struct {
-	LogLevel string `json:"log-level"`
-	StrFryBin string `json:"strfry-bin"`
-	Users []*SyncUser `json:"users"`
+	LogLevel string `koanf:"log-level" json:"log-level"`
+	StrFryBin string `koanf:"strfry-bin" json:"strfry-bin"`
+	StrFryConfig string `koanf:"strfry-config" json:"strfry-config"`
+	Users []*SyncUser `koanf:"users" json:"users"`
 	usersMap map[string]bool
 	usersMutex sync.RWMutex
 }

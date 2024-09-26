@@ -347,6 +347,7 @@ func main() {
 	syncer = strfry.NewSyncConfig()
 	syncer.StrFryBin = cfg.StrFryBin
 	syncer.LogLevel = cfg.LogLevel
+	syncer.StrFryConfig = cfg.StrFryConfig
 
 	updateUsers := func() {
 		ctx, cancel := context.WithCancel(ctx)
