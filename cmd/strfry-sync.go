@@ -63,40 +63,43 @@ func main() {
 			cmd := exec.CommandContext(ctx, cfg.StrFryBin, configOpt, "sync", relay, filterOpt)
 
 			outr, outw := io.Pipe()
-			cmd.Stdout = io.MultiWriter(outw, os.Stdout)
-			cmd.Stderr = os.Stderr
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = io.MultiWriter(outw, os.Stdout)
 
-			lines := make(chan string)
-			lastLine := time.Now()
-			finished := false
+			lastline := make(chan time.Time, 100)
+			finished := make(chan bool)
 
 			go func() {
+				var last = time.Now()
+				exit := false
+
 				for {
-					if finished {
+					select {
+					case <-finished:
+						exit = true
+						break
+					case x := <-lastline:
+						last = x
+					default:
+						time.Sleep(1*time.Second)
+
+						if time.Now().Sub(last) > SyncCommandTimeout {
+							cancel()
+							break
+						}
+					}
+
+					if exit {
 						break
 					}
-					if time.Now().Sub(lastLine) > SyncCommandTimeout {
-						cancel()
-						break
-					}
-					time.Sleep(1*time.Second)
 				}
 			}()
 
 			go func() {
-				for line := range lines {
-					lastLine = time.Now()
-					fmt.Println(line)
-				}
-			}()
-
-			go func() {
-				defer close(lines)
-
 				scanner := bufio.NewScanner(outr)
 
 				for scanner.Scan() {
-					lines <- scanner.Text()
+					lastline <- time.Now()
 				}
 
 				if err := scanner.Err(); err != nil {
@@ -117,13 +120,14 @@ func main() {
 
 			wg.Add(1)
 			go func() {
+				defer close(lastline)
 				defer wg.Done()
 				err := cmd.Wait()
 				if err != nil {
 					fmt.Println("command exited:", err)
 				}
 				_ = outw.Close()
-				finished = true
+				finished <- true
 			}()
 
 			wg.Wait()
