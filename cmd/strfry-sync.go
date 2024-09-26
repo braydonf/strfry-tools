@@ -123,7 +123,6 @@ func main() {
 
 			wg.Add(1)
 			go func() {
-				defer close(lastline)
 				defer wg.Done()
 				err := cmd.Wait()
 				if err != nil {
