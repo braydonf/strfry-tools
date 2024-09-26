@@ -96,14 +96,17 @@ func main() {
 			}()
 
 			go func() {
-				scanner := bufio.NewScanner(outr)
+				reader := bufio.NewReader(outr)
 
-				for scanner.Scan() {
+				var err error
+
+				for ; err == nil; {
+					_, _, err = reader.ReadLine()
 					lastline <- time.Now()
 				}
 
-				if err := scanner.Err(); err != nil {
-					fmt.Println("scanner error:", err)
+				if err != io.EOF && err != nil {
+					fmt.Println("readline error:", err)
 				}
 			}()
 
