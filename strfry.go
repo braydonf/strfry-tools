@@ -306,6 +306,11 @@ var (
 		"ERROR: bad msg: negentropy disabled",
 		"ERROR: bad msg: invalid message",
 		"bad message type",
+		`invalid: \"value\" does not match any of the allowed types`,
+		"Command unrecognized",
+		"error: bad message",
+		"could not parse command",
+		"unknown message type NEG-OPEN",
 	}
 
 	UnexpectedReg = regexp.MustCompile("^(.*)Unexpected message from relay: \\[\"NOTICE\"\\,")
