@@ -11,6 +11,7 @@ import (
 	"sync"
 	"io"
 	"bufio"
+	"syscall"
 
 	"github.com/braydonf/strfry-tools"
 	"github.com/knadh/koanf/parsers/yaml"
@@ -23,7 +24,7 @@ import (
 )
 
 const (
-	SyncCommandTimeout = 10 * time.Second
+	SyncCommandTimeout = 20*time.Second
 )
 
 type RelayStatus struct {
@@ -125,24 +126,38 @@ func main() {
 
 			lastline := make(chan time.Time, 100)
 			finished := make(chan bool)
+			canceled := make(chan bool)
 
 			go func() {
 				var last = time.Now()
-				exit := false
+
+				var exit = false
+				var stopped = false
+
+				stop := func() {
+					stopped = true
+					syscall.Kill(cmd.Process.Pid, syscall.SIGINT)
+					cancel()
+				}
 
 				for {
 					select {
 					case <-finished:
 						exit = true
 						break
+					case <-canceled:
+						stop()
+						break
 					case x := <-lastline:
 						last = x
 					default:
-						time.Sleep(1*time.Second)
-
-						if time.Now().Sub(last) > SyncCommandTimeout {
-							cancel()
+						if stopped {
 							break
+						}
+						time.Sleep(1*time.Second)
+						if time.Now().Sub(last) > SyncCommandTimeout {
+							log.Warn().Str("relay", relay).Msg("negentropy timeout")
+							stop()
 						}
 					}
 
@@ -164,19 +179,25 @@ func main() {
 					monitor.SetTimeAndMsg(relay, time.Now(), string(lastMsg))
 
 					lastline <- time.Now()
+
+					if strfry.NegentropyUnsupportedLog(lastMsg) {
+						log.Warn().Str("relay", relay).Msg("negentropy unsupported")
+						canceled <- true
+						break
+					}
 				}
 
 				if err != io.EOF && err != nil {
-					fmt.Println("readline error:", err)
+					log.Err(err).Str("relay", relay).Msg("readline error")
 				}
 			}()
 
 			if err := cmd.Start(); err != nil {
 				switch e := err.(type) {
 				case *exec.Error:
-					fmt.Println("failed executing:", err)
+					log.Err(err).Str("relay", relay).Msg("failed executing")
 				case *exec.ExitError:
-					fmt.Println("command exit code:", e.ExitCode())
+					log.Warn().Str("relay", relay).Int("code", e.ExitCode()).Msg("command exit")
 				default:
 					panic(err)
 				}
@@ -188,7 +209,7 @@ func main() {
 
 				if err := cmd.Wait(); err != nil {
 					monitor.SetSuccess(relay, false)
-					fmt.Println("command exited:", err)
+					log.Warn().Str("relay", relay).Err(err).Msg("command exited")
 				} else {
 					monitor.SetSuccess(relay, true)
 				}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"encoding/json"
+	"regexp"
+	"bytes"
 
 	"github.com/nbd-wtf/go-nostr"
 )
@@ -296,4 +298,33 @@ func (g *RouterConfig) AddUser(
 
 	// Save the plugin configuration.
 	return stream.WritePluginConfig(pluginConf)
+}
+
+var (
+	UnsupportedMsgs = []string{
+		"ERROR: negentropy error: negentropy query missing elements",
+		"ERROR: bad msg: negentropy disabled",
+		"ERROR: bad msg: invalid message",
+		"bad message type",
+	}
+
+	UnexpectedReg = regexp.MustCompile("^(.*)Unexpected message from relay: \\[\"NOTICE\"\\,")
+)
+
+func NegentropyUnsupportedLog(log []byte) bool {
+	pair := UnexpectedReg.FindIndex(log)
+	matched := false
+	if len(pair) == 2 {
+		for _, s := range UnsupportedMsgs {
+			m := bytes.Contains(log[pair[1]:len(log)], []byte(s))
+			if m {
+				matched = true
+				break
+			}
+		}
+	}
+	if matched {
+		return true
+	}
+	return false
 }
