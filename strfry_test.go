@@ -17,6 +17,7 @@ func TestNegentropyUnsupportedLog(t *testing.T) {
 		`2024-09-27 15:15:17.578 (   0.839s) [main thread     ]WARN| Unexpected message from relay: ["NOTICE","error: bad message"]`,
 		`2024-09-27 15:16:52.966 (   1.088s) [main thread     ]WARN| Unexpected message from relay: ["NOTICE","could not parse command"]`,
 		`2024-09-27 15:16:52.966 (   1.088s) [main thread     ]WARN| Unexpected message from relay: ["NOTICE","unknown message type NEG-OPEN"]`,
+		`2024-09-27 16:36:21.611 (   1.347s) [main thread     ]WARN| Unexpected message from relay: ["NOTICE","ERROR: bad msg: unknown cmd"]`,
 	}
 
 	otherLogs := []string{
