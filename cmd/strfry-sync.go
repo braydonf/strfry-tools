@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"time"
+	"strings"
 	"os/exec"
 	"encoding/json"
 	"context"
@@ -25,6 +26,60 @@ const (
 	SyncCommandTimeout = 10 * time.Second
 )
 
+type RelayStatus struct {
+	Url string `json:"url"`
+	Msg string `json:"msg",omitempty`
+	Success bool `json:"success"`
+	Time *time.Time `json:"time,omitempty"`
+}
+
+type SuccessMonitor struct {
+	Relays map[string]*RelayStatus `json:"relays"`
+	relaysMutex sync.RWMutex
+}
+
+func (g *SuccessMonitor) SetSuccess(relay string, status bool) {
+	g.relaysMutex.Lock()
+
+	if g.Relays[relay] == nil {
+		g.Relays[relay] = &RelayStatus{Url: relay}
+	}
+
+	g.Relays[relay].Success = status
+
+	g.relaysMutex.Unlock()
+}
+
+func (g *SuccessMonitor) SetTimeAndMsg(relay string, now time.Time, lastMsg string) {
+	g.relaysMutex.Lock()
+
+	if g.Relays[relay] == nil {
+		g.Relays[relay] = &RelayStatus{Url: relay}
+	}
+
+	if len(lastMsg) > 0 {
+		g.Relays[relay].Msg = strings.Clone(lastMsg)
+	}
+
+	g.Relays[relay].Time = &now
+
+	g.relaysMutex.Unlock()
+}
+
+func (g *SuccessMonitor) WriteFile(cfg *strfry.SyncConfig) error {
+	bytes, err := json.MarshalIndent(g, "", "  ")
+
+	if err != nil {
+		return fmt.Errorf("marshal error: %s", err)
+	} else {
+		if err := os.WriteFile(cfg.StatusFile, bytes, 0644); err != nil {
+			return fmt.Errorf("write error: %s", err)
+		}
+	}
+
+	return nil
+}
+
 var (
 	knf = koanf.New(".")
 	cfg strfry.SyncConfig
@@ -38,6 +93,8 @@ func main() {
 	SetLogLevel(cfg.LogLevel)
 
 	ctx := context.Background()
+
+	monitor := SuccessMonitor{Relays: make(map[string]*RelayStatus, 0)}
 
 	// Sync all the users.
 	for _, user := range cfg.Users {
@@ -99,9 +156,13 @@ func main() {
 				reader := bufio.NewReader(outr)
 
 				var err error
+				var lastMsg []byte
 
 				for ; err == nil; {
-					_, _, err = reader.ReadLine()
+					lastMsg, _, err = reader.ReadLine()
+
+					monitor.SetTimeAndMsg(relay, time.Now(), string(lastMsg))
+
 					lastline <- time.Now()
 				}
 
@@ -124,15 +185,27 @@ func main() {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				err := cmd.Wait()
-				if err != nil {
+
+				if err := cmd.Wait(); err != nil {
+					monitor.SetSuccess(relay, false)
 					fmt.Println("command exited:", err)
+				} else {
+					monitor.SetSuccess(relay, true)
 				}
+
 				_ = outw.Close()
 				finished <- true
 			}()
 
 			wg.Wait()
+
+			err := monitor.WriteFile(&cfg)
+
+			if err != nil {
+				log.Err(err).Str("file", cfg.StatusFile).Msg("unable to write status file")
+			} else {
+				log.Info().Str("relay", relay).Str("file", cfg.StatusFile).Msg("wrote status file")
+			}
 		}
 	}
 }

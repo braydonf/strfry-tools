@@ -10,6 +10,7 @@ router-config: "/var/local/strfry/router.config"
 sync-config: "/var/local/strfry/sync.json"
 sync-strfry: "/usr/bin/local/strfry"
 sync-strfry-config: "/etc/strfry/strfry.conf"
+sync-status-file: "/var/local/strfry/sync-status.json"
 
 users:
   - name: "alice"

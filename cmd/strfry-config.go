@@ -295,7 +295,7 @@ func writeConfigFile() {
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
 		} else {
-			if err := os.WriteFile(cfg.RouterConfig, conf, 0666); err != nil {
+			if err := os.WriteFile(cfg.RouterConfig, conf, 0644); err != nil {
 				fmt.Errorf("write error: %s", err)
 			}
 		}
@@ -305,7 +305,7 @@ func writeConfigFile() {
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
 		} else {
-			if err := os.WriteFile(cfg.SyncConfig, syncConf, 0666); err != nil {
+			if err := os.WriteFile(cfg.SyncConfig, syncConf, 0644); err != nil {
 				fmt.Errorf("write error: %s", err)
 			}
 		}
@@ -348,6 +348,7 @@ func main() {
 	syncer.StrFryBin = cfg.StrFryBin
 	syncer.LogLevel = cfg.LogLevel
 	syncer.StrFryConfig = cfg.StrFryConfig
+	syncer.StatusFile = cfg.SyncStatusFile
 
 	updateUsers := func() {
 		ctx, cancel := context.WithCancel(ctx)
