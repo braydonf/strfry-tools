@@ -38,6 +38,7 @@ router-plugin-config: "/var/local/strfry/router-plugin"
 router-config: "/var/local/strfry/router.config"
 sync-config: "/var/local/strfry/sync.json"
 sync-strfry: "/usr/bin/local/strfry"
+sync-strfry-log: "/var/local/strfry/logs/sync"
 sync-status-file: "/var/local/strfry/sync-status.json"
 
 users:
@@ -56,6 +57,7 @@ Main options:
 - `router-config` is the location of the `strfry router` configuration.
 - `sync-config` is the location of the `strfry-sync` configuration file.
 - `sync-strfry` is the location of the `strfry` executable.
+- `sync-strfry-log` is the location of the `strfry sync` command logs, it is a base filename.
 - `sync-status-file` is the location that the sync status for each relay will be written.
 - `users` defines the set of root pubkeys that will have their `kind 3` and `kind 10002` events used to define the router streams.
 

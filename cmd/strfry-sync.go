@@ -137,9 +137,20 @@ func main() {
 
 				cmd := exec.CommandContext(ctx, cfg.StrFryBin, configOpt, "sync", relay, filterOpt)
 
+				// Write each sync command to a different log file
+				// so that the logs are not in disorganized ordering.
+				logfilePath := fmt.Sprintf("%s-pk-%s.log", cfg.StrFryLog, user.PubKey)
+
+				logfile, err := os.Create(logfilePath)
+				if err != nil {
+					log.Warn().Str("user", user.PubKey).Err(err).Msg("unable to create log file")
+					return
+				}
+				defer logfile.Close()
+
 				outr, outw := io.Pipe()
 				cmd.Stdout = os.Stdout
-				cmd.Stderr = io.MultiWriter(outw)
+				cmd.Stderr = io.MultiWriter(outw, logfile)
 
 				lastline := make(chan time.Time, 100)
 				finished := make(chan bool)
@@ -237,7 +248,7 @@ func main() {
 
 				wg.Wait()
 
-				err := monitor.WriteFile(&cfg)
+				err = monitor.WriteFile(&cfg)
 
 				if err != nil {
 					log.Err(err).Str("file", cfg.StatusFile).Msg("unable to write status file")

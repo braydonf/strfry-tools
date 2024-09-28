@@ -303,6 +303,7 @@ func main() {
 	syncer.LogLevel = cfg.LogLevel
 	syncer.StrFryConfig = cfg.StrFryConfig
 	syncer.StatusFile = cfg.SyncStatusFile
+	syncer.StrFryLog = cfg.StrFryLog
 
 	updateUsers := func() {
 		ctx, cancel := context.WithCancel(ctx)

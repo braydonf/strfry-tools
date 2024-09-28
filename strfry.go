@@ -34,6 +34,7 @@ type Config struct {
 	RouterConfig string `koanf:"router-config"`
 	SyncConfig string `koanf:"sync-config"`
 	SyncStatusFile string `koanf:"sync-status-file"`
+	StrFryLog string `koanf:"sync-strfry-log"`
 	StrFryBin string `koanf:"sync-strfry"`
 	StrFryConfig string `koanf:"sync-strfry-config"`
 	DiscoveryRelays []string `koanf:"discovery-relays"`
@@ -96,6 +97,7 @@ type SyncConfig struct {
 	LogLevel string `koanf:"log-level" json:"log-level"`
 	StrFryBin string `koanf:"strfry-bin" json:"strfry-bin"`
 	StrFryConfig string `koanf:"strfry-config" json:"strfry-config"`
+	StrFryLog string `koanf:"strfry-log" json:"strfry-log"`
 	StatusFile string `koanf:"status-file" json:"status-file"`
 	Users []*SyncUser `koanf:"users" json:"users"`
 	usersMap map[string]bool
