@@ -2,6 +2,8 @@
 
 A set of tools for [strfry](https://github.com/hoytech/strfry) relays for the [Nostr protocol](https://github.com/nostr-protocol/nips).
 
+![Banner](graphics/strfry-tools.png "Banner")
+
 Included programs and plugins:
 - `strfry-config` This will auto generate configs for a `stryfry router` and for `strfry-sync` based on user pubkeys for streaming and syncing a network of contacts.
 - `strfry-sync` This will sync a network of contacts using `negentropy` with `strfry sync`.
