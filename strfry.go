@@ -16,6 +16,7 @@ const (
 	FilterMaxBytes = 65535
 	FilterMaxAuthors = 950
 	MaxConcurrentReqs = 10
+	MaxConcurrentSyncs = 10
 )
 
 type User struct {

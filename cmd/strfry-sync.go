@@ -68,6 +68,9 @@ func (g *SuccessMonitor) SetTimeAndMsg(relay string, now time.Time, lastMsg stri
 }
 
 func (g *SuccessMonitor) WriteFile(cfg *strfry.SyncConfig) error {
+	g.relaysMutex.Lock()
+	defer g.relaysMutex.Unlock()
+
 	bytes, err := json.MarshalIndent(g, "", "  ")
 
 	if err != nil {
@@ -85,6 +88,8 @@ var (
 	knf = koanf.New(".")
 	cfg strfry.SyncConfig
 	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
+	counter strfry.ConcurrentCounter
 )
 
 func main() {
@@ -96,139 +101,154 @@ func main() {
 	ctx := context.Background()
 
 	monitor := SuccessMonitor{Relays: make(map[string]*RelayStatus, 0)}
+	userwg := sync.WaitGroup{}
 
 	// Sync all the users.
 	for _, user := range cfg.Users {
 		log.Info().Str("pubkey", user.PubKey).Msg("starting sync")
 
-		filter := nostr.Filter{Authors: []string{user.PubKey}}
-		filterBytes, err := json.Marshal(filter)
-		if err != nil {
-			fmt.Errorf("%s", err)
-			break
-		}
+		userwg.Add(1)
 
-		filterOpt := fmt.Sprintf("--filter=%s", string(filterBytes))
-		configOpt := fmt.Sprintf("--config=%s", cfg.StrFryConfig)
+		go func() {
+			defer userwg.Done()
 
-		for _, relay := range user.Relays {
-			wg := sync.WaitGroup{}
+			// Make sure that we are only running the maximum number
+			// of these user syncs concurrently.
+			counter.Wait(strfry.MaxConcurrentSyncs)
+			counter.Begin()
+			defer counter.Done()
 
-			log.Info().Str("pubkey", user.PubKey).Str("relay", relay).Msg("with relay")
+			filter := nostr.Filter{Authors: []string{user.PubKey}}
+			filterBytes, err := json.Marshal(filter)
+			if err != nil {
+				fmt.Errorf("%s", err)
+				return
+			}
 
-			ctx, cancel := context.WithCancel(ctx)
+			filterOpt := fmt.Sprintf("--filter=%s", string(filterBytes))
+			configOpt := fmt.Sprintf("--config=%s", cfg.StrFryConfig)
 
-			cmd := exec.CommandContext(ctx, cfg.StrFryBin, configOpt, "sync", relay, filterOpt)
+			for _, relay := range user.Relays {
+				wg := sync.WaitGroup{}
 
-			outr, outw := io.Pipe()
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = io.MultiWriter(outw, os.Stdout)
+				log.Info().Str("pubkey", user.PubKey).Str("relay", relay).Msg("with relay")
 
-			lastline := make(chan time.Time, 100)
-			finished := make(chan bool)
-			canceled := make(chan bool)
+				ctx, cancel := context.WithCancel(ctx)
 
-			go func() {
-				var last = time.Now()
+				cmd := exec.CommandContext(ctx, cfg.StrFryBin, configOpt, "sync", relay, filterOpt)
 
-				var exit = false
-				var stopped = false
+				outr, outw := io.Pipe()
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = io.MultiWriter(outw)
 
-				stop := func() {
-					stopped = true
-					syscall.Kill(cmd.Process.Pid, syscall.SIGINT)
-					cancel()
-				}
+				lastline := make(chan time.Time, 100)
+				finished := make(chan bool)
+				canceled := make(chan bool)
 
-				for {
-					select {
-					case <-finished:
-						exit = true
-						break
-					case <-canceled:
-						stop()
-						break
-					case x := <-lastline:
-						last = x
-					default:
-						if stopped {
+				go func() {
+					var last = time.Now()
+
+					var exit = false
+					var stopped = false
+
+					stop := func() {
+						stopped = true
+						syscall.Kill(cmd.Process.Pid, syscall.SIGINT)
+						cancel()
+					}
+
+					for {
+						select {
+						case <-finished:
+							exit = true
+							break
+						case <-canceled:
+							stop()
+							break
+						case x := <-lastline:
+							last = x
+						default:
+							if stopped {
+								break
+							}
+							time.Sleep(1*time.Second)
+							if time.Now().Sub(last) > SyncCommandTimeout {
+								log.Warn().Str("relay", relay).Msg("negentropy timeout")
+								stop()
+							}
+						}
+
+						if exit {
 							break
 						}
-						time.Sleep(1*time.Second)
-						if time.Now().Sub(last) > SyncCommandTimeout {
-							log.Warn().Str("relay", relay).Msg("negentropy timeout")
-							stop()
+					}
+				}()
+
+				go func() {
+					reader := bufio.NewReader(outr)
+
+					var err error
+					var lastMsg []byte
+
+					for ; err == nil; {
+						lastMsg, _, err = reader.ReadLine()
+
+						monitor.SetTimeAndMsg(relay, time.Now(), string(lastMsg))
+
+						lastline <- time.Now()
+
+						if strfry.NegentropyUnsupportedLog(lastMsg) {
+							log.Warn().Str("relay", relay).Msg("negentropy unsupported")
+							canceled <- true
+							break
 						}
 					}
 
-					if exit {
-						break
+					if err != io.EOF && err != nil {
+						log.Err(err).Str("relay", relay).Msg("readline error")
 					}
-				}
-			}()
+				}()
 
-			go func() {
-				reader := bufio.NewReader(outr)
-
-				var err error
-				var lastMsg []byte
-
-				for ; err == nil; {
-					lastMsg, _, err = reader.ReadLine()
-
-					monitor.SetTimeAndMsg(relay, time.Now(), string(lastMsg))
-
-					lastline <- time.Now()
-
-					if strfry.NegentropyUnsupportedLog(lastMsg) {
-						log.Warn().Str("relay", relay).Msg("negentropy unsupported")
-						canceled <- true
-						break
+				if err := cmd.Start(); err != nil {
+					switch e := err.(type) {
+					case *exec.Error:
+						log.Err(err).Str("relay", relay).Msg("failed executing")
+					case *exec.ExitError:
+						log.Warn().Str("relay", relay).Int("code", e.ExitCode()).Msg("command exit")
+					default:
+						panic(err)
 					}
 				}
 
-				if err != io.EOF && err != nil {
-					log.Err(err).Str("relay", relay).Msg("readline error")
-				}
-			}()
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
 
-			if err := cmd.Start(); err != nil {
-				switch e := err.(type) {
-				case *exec.Error:
-					log.Err(err).Str("relay", relay).Msg("failed executing")
-				case *exec.ExitError:
-					log.Warn().Str("relay", relay).Int("code", e.ExitCode()).Msg("command exit")
-				default:
-					panic(err)
-				}
-			}
+					if err := cmd.Wait(); err != nil {
+						monitor.SetSuccess(relay, false)
+						log.Warn().Str("relay", relay).Err(err).Msg("command exited")
+					} else {
+						monitor.SetSuccess(relay, true)
+					}
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+					_ = outw.Close()
+					finished <- true
+				}()
 
-				if err := cmd.Wait(); err != nil {
-					monitor.SetSuccess(relay, false)
-					log.Warn().Str("relay", relay).Err(err).Msg("command exited")
+				wg.Wait()
+
+				err := monitor.WriteFile(&cfg)
+
+				if err != nil {
+					log.Err(err).Str("file", cfg.StatusFile).Msg("unable to write status file")
 				} else {
-					monitor.SetSuccess(relay, true)
+					log.Info().Str("relay", relay).Str("file", cfg.StatusFile).Msg("wrote status file")
 				}
-
-				_ = outw.Close()
-				finished <- true
-			}()
-
-			wg.Wait()
-
-			err := monitor.WriteFile(&cfg)
-
-			if err != nil {
-				log.Err(err).Str("file", cfg.StatusFile).Msg("unable to write status file")
-			} else {
-				log.Info().Str("relay", relay).Str("file", cfg.StatusFile).Msg("wrote status file")
 			}
-		}
+		}()
 	}
+
+	userwg.Wait()
 }
 
 func SetLogLevel(lvl string) {
