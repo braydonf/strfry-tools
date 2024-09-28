@@ -4,6 +4,7 @@ import (
 	"os"
 	"fmt"
 	"sync"
+	"time"
 	"encoding/json"
 	"regexp"
 	"bytes"
@@ -36,6 +37,52 @@ type Config struct {
 	StrFryConfig string `koanf:"sync-strfry-config"`
 	DiscoveryRelays []string `koanf:"discovery-relays"`
 	Users []User `koanf:"users"`
+}
+
+type ConcurrentCounter struct {
+	mutex sync.Mutex
+	count int
+}
+
+func (g *ConcurrentCounter) Begin() {
+	g.mutex.Lock()
+	g.count++
+	g.mutex.Unlock()
+}
+
+func (g *ConcurrentCounter) Done() {
+	g.mutex.Lock()
+	g.count--
+	g.mutex.Unlock()
+}
+
+func (g *ConcurrentCounter) Value() int {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+	return g.count
+}
+
+func (g *ConcurrentCounter) Wait(max int) {
+	if g.Value() < max {
+		return
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		for {
+			if g.Value() < max {
+				break
+			}
+
+			time.Sleep(3*time.Second)
+		}
+
+		wg.Done()
+	}()
+
+	wg.Wait()
 }
 
 type SyncUser struct {

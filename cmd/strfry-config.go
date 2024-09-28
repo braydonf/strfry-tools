@@ -22,52 +22,6 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
-type ReqsCounter struct {
-	mutex sync.Mutex
-	count int
-}
-
-func (g *ReqsCounter) Begin() {
-	g.mutex.Lock()
-	g.count++
-	g.mutex.Unlock()
-}
-
-func (g *ReqsCounter) Done() {
-	g.mutex.Lock()
-	g.count--
-	g.mutex.Unlock()
-}
-
-func (g *ReqsCounter) Value() int {
-	g.mutex.Lock()
-	defer g.mutex.Unlock()
-	return g.count
-}
-
-func (g *ReqsCounter) Wait(max int) {
-	if g.Value() < max {
-		return
-	}
-
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
-	go func() {
-		for {
-			if g.Value() < max {
-				break
-			}
-
-			time.Sleep(3*time.Second)
-		}
-
-		wg.Done()
-	}()
-
-	wg.Wait()
-}
-
 var (
 	knf = koanf.New(".")
 	crn = cron.New()
@@ -76,7 +30,7 @@ var (
 
 	router strfry.RouterConfig
 	syncer strfry.SyncConfig
-	counter ReqsCounter
+	counter strfry.ConcurrentCounter
 )
 
 func init() {
