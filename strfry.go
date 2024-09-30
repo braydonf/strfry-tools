@@ -339,6 +339,10 @@ func (g *RouterConfig) AddUser(
 				g.Streams[streamName] = NewRouterStream(dir, pluginCmd)
 				stream = g.Streams[streamName]
 				stream.SetPlugin(pluginDown)
+
+				for _, relay := range relays {
+					stream.AppendUniqueRelay(relay)
+				}
 			}
 
 			stream.Filter.AppendUniqueAuthor(hex)

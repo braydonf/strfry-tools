@@ -184,22 +184,24 @@ func getUsersInfo(
 				contacts = getUserFollows(ctx, exited, user.PubKey, pool, relays)
 			}
 
-			// Now add this user to the router.
-			err := router.AddUser(&cfg, &user, userRelays, contacts)
-
-			if err != nil {
-				log.Warn().Err(err).Msg("error adding to stream")
-			} else {
-				log.Info().Str("pubkey", user.PubKey).Msg("added to router")
-			}
-
-			// Add to the sync config.
 			if len(userRelays) > 0 {
+				// Now add this user to the router.
+				err := router.AddUser(&cfg, &user, userRelays, contacts)
+
+				if err != nil {
+					log.Warn().Err(err).Msg("error adding to stream")
+				} else {
+					log.Info().Str("pubkey", user.PubKey).Msg("added to router")
+				}
+
+				// Add to the sync config.
 				syncer.AppendUniqueUser(&strfry.SyncUser{
 					Direction: user.Direction,
 					PubKey: user.PubKey,
 					Relays: userRelays,
 				})
+			} else {
+				log.Info().Msg("no relay for user, omitting")
 			}
 
 			// Now keep going for the next depth.
