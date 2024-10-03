@@ -87,12 +87,14 @@ func (g *SuccessMonitor) WriteFile(cfg *strfry.SyncConfig) error {
 var (
 	knf = koanf.New(".")
 	cfg strfry.SyncConfig
-	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).With().Timestamp().Logger()
 
 	counter strfry.ConcurrentCounter
 )
 
 func main() {
+	log.Info().Msg("sync starting")
+
 	// Setup flags, load config and set log level.
 	f := SetupFlags()
 	LoadConfig(f, &cfg)
@@ -131,7 +133,7 @@ func main() {
 			for _, relay := range user.Relays {
 				wg := sync.WaitGroup{}
 
-				log.Info().Str("pubkey", user.PubKey).Str("relay", relay).Msg("with relay")
+				log.Info().Str("pubkey", user.PubKey).Str("relay", relay).Msg("user with relay")
 
 				ctx, cancel := context.WithCancel(ctx)
 
@@ -251,15 +253,17 @@ func main() {
 				err = monitor.WriteFile(&cfg)
 
 				if err != nil {
-					log.Err(err).Str("file", cfg.StatusFile).Msg("unable to write status file")
+					log.Err(err).Str("file", cfg.StatusFile).Msg("unable to write relay status file")
 				} else {
-					log.Info().Str("relay", relay).Str("file", cfg.StatusFile).Msg("wrote status file")
+					log.Info().Str("relay", relay).Str("file", cfg.StatusFile).Msg("wrote relay status file")
 				}
 			}
 		}()
 	}
 
 	userwg.Wait()
+
+	log.Info().Msg("sync complete")
 }
 
 func SetLogLevel(lvl string) {

@@ -26,7 +26,7 @@ var (
 	knf = koanf.New(".")
 	crn = cron.New()
 	cfg strfry.Config
-	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).With().Timestamp().Logger()
 
 	router strfry.RouterConfig
 	syncer strfry.SyncConfig
@@ -119,7 +119,7 @@ func getUserRelayMeta(
 			results = append(results, relay)
 		}
 	} else {
-		log.Warn().Str("pubkey", pubkey).Msg("no relay meta")
+		log.Warn().Str("pubkey", pubkey).Msg("no relay list meta")
 	}
 
 	return results
@@ -191,7 +191,7 @@ func getUsersInfo(
 				if err != nil {
 					log.Warn().Err(err).Msg("error adding to stream")
 				} else {
-					log.Info().Str("pubkey", user.PubKey).Msg("added to router")
+					log.Info().Str("pubkey", user.PubKey).Msg("added to router config")
 				}
 
 				// Add to the sync config.
@@ -200,8 +200,8 @@ func getUsersInfo(
 					PubKey: user.PubKey,
 					Relays: userRelays,
 				})
-			} else {
-				log.Info().Msg("no relay for user, omitting")
+
+				log.Info().Str("pubkey", user.PubKey).Msg("added to sync config")
 			}
 
 			// Now keep going for the next depth.
@@ -238,8 +238,6 @@ func getUsersInfo(
 }
 
 func writeConfigFile() {
-	log.Info().Msg("writing config file")
-
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
@@ -251,6 +249,7 @@ func writeConfigFile() {
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
 		} else {
+			log.Info().Str("file", cfg.RouterConfig).Msg("writing router config file")
 			if err := os.WriteFile(cfg.RouterConfig, conf, 0644); err != nil {
 				fmt.Errorf("write error: %s", err)
 			}
@@ -261,6 +260,7 @@ func writeConfigFile() {
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
 		} else {
+			log.Info().Str("file", cfg.SyncConfig).Msg("writing sync config file")
 			if err := os.WriteFile(cfg.SyncConfig, syncConf, 0644); err != nil {
 				fmt.Errorf("write error: %s", err)
 			}
@@ -268,6 +268,8 @@ func writeConfigFile() {
 	}()
 
 	wg.Wait()
+
+	log.Info().Msg("wrote config files")
 }
 
 func main() {
