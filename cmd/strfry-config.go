@@ -28,7 +28,7 @@ var (
 	cfg strfry.Config
 	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).With().Timestamp().Logger()
 
-	router strfry.RouterConfig
+	routers strfry.Routers
 	syncer strfry.SyncConfig
 	counter strfry.ConcurrentCounter
 )
@@ -186,13 +186,9 @@ func getUsersInfo(
 
 			if len(userRelays) > 0 {
 				// Now add this user to the router.
-				err := router.AddUser(&cfg, &user, userRelays, contacts)
+				routers.AddUser(&cfg, &user, userRelays, contacts)
 
-				if err != nil {
-					log.Warn().Err(err).Msg("error adding to stream")
-				} else {
-					log.Info().Str("pubkey", user.PubKey).Msg("added to router config")
-				}
+				log.Info().Str("pubkey", user.PubKey).Msg("added to routers config")
 
 				// Add to the sync config.
 				syncer.AppendUniqueUser(&strfry.SyncUser{
@@ -237,44 +233,55 @@ func getUsersInfo(
 	wg.Wait()
 }
 
-func writeConfigFile() {
+func writeConfigFiles() {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
 	go func() {
 		defer wg.Done()
 
-		conf, err := json.MarshalIndent(router, "", "  ")
-
-		if err != nil {
-			fmt.Errorf("marshal error: %s", err)
-		} else {
-			log.Info().Str("file", cfg.RouterConfig).Msg("writing router config file")
-			if err := os.WriteFile(cfg.RouterConfig, conf, 0644); err != nil {
+		for _, router := range routers.Configs {
+			path, err := router.WriteFile()
+			if err != nil {
 				fmt.Errorf("write error: %s", err)
+			} else {
+				log.Info().Str("file", path).Msg("wrote router config")
 			}
 		}
 
-		syncConf, err := json.MarshalIndent(syncer, "", "  ")
+		err := routers.WritePluginConfig(cfg.RouterPluginConfig)
+		if err != nil {
+			fmt.Errorf("write error: %s", err)
+		} else {
+			log.Info().Str("file", cfg.RouterPluginConfig).Msg("wrote plugin config")
+		}
 
+		err = routers.WriteConfig(cfg.RoutersConfig)
+		if err != nil {
+			fmt.Errorf("write error: %s", err)
+		} else {
+			log.Info().Str("file", cfg.RoutersConfig).Msg("wrote routers config")
+		}
+
+		syncConf, err := json.MarshalIndent(syncer, "", "  ")
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
 		} else {
-			log.Info().Str("file", cfg.SyncConfig).Msg("writing sync config file")
 			if err := os.WriteFile(cfg.SyncConfig, syncConf, 0644); err != nil {
 				fmt.Errorf("write error: %s", err)
 			}
+			log.Info().Str("file", cfg.SyncConfig).Msg("wrote sync config")
 		}
 	}()
 
 	wg.Wait()
 
-	log.Info().Msg("wrote config files")
+	log.Info().Msg("wrote all config files")
 }
 
 func main() {
 	// Setup the router and plugin.
-	router.Streams = make(map[string]*strfry.RouterStream)
+	routers = strfry.NewRouters()
 
 	// Used to keep the process open and watch for
 	// system signals to interrupt the process.
@@ -307,7 +314,14 @@ func main() {
 	syncer.LogLevel = cfg.LogLevel
 	syncer.StrFryConfig = cfg.StrFryConfig
 	syncer.StatusFile = cfg.SyncStatusFile
-	syncer.StrFryLog = cfg.StrFryLog
+	syncer.StrFryLogBase = cfg.SyncStrFryLogBase
+
+	// Set the router configuration values.
+	routers.Config = &strfry.RoutersConfig{}
+	routers.Config.LogLevel = cfg.LogLevel
+	routers.Config.ConfigBase = cfg.RouterConfigBase
+	routers.Config.StrFryConfig = cfg.StrFryConfig
+	routers.Config.StrFryBin = cfg.StrFryBin
 
 	updateUsers := func() {
 		ctx, cancel := context.WithCancel(ctx)
@@ -327,7 +341,7 @@ func main() {
 		}
 
 		getUsersInfo(ctx, exited, cfg.Users, pool, cfg.DiscoveryRelays)
-		writeConfigFile()
+		writeConfigFiles()
 	}
 
 	updateUsers()
@@ -338,10 +352,6 @@ func main() {
 	<-done
 
 	crn.Stop()
-
-	// TODO Periodically run and sync for all users using
-	// strfry negentropy. Also run this at start as in
-	// the case of downtime or a new user.
 }
 
 func SetLogLevel(lvl string) {

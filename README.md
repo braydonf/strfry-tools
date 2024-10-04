@@ -39,8 +39,8 @@ discovery-relays:
   - "wss://domian2.tld"
 
 router-plugin-down: "/usr/bin/local/strfry-router-plugin"
-router-plugin-config: "/var/local/strfry/router-plugin"
-router-config: "/var/local/strfry/router.config"
+router-plugin-config: "/var/local/strfry/router-plugin.json"
+router-config: "/var/local/strfry/router"
 sync-config: "/var/local/strfry/sync.json"
 sync-strfry: "/usr/bin/local/strfry"
 sync-strfry-log: "/var/local/strfry/logs/sync"
@@ -59,8 +59,8 @@ Main options:
 - `log-level` defines the verbosity of logs. The options include from less verbose to most: "panic", "fatal", "error", "warn", "info", "debug" and "trace".
 - `discovery-relays` are used to retrieve the `kind 10002` (NIP-65) relay list metadata for each pubkey that has been defined in `users`.
 - `router-plugin-down` defines the location of the `strfry-router-plugin` executable for a `strfry router`.
-- `router-plugin-config` defines the configuration base path for the `strfry router` plugin. It shouldn't include an extension as it is a base path to create multiple files.
-- `router-config` is the location of the `strfry router` configuration.
+- `router-plugin-config` defines the configuration path for the `strfry router` plugin.
+- `router-config` is the location of the `strfry router` configuration, it is a base filename.
 - `sync-config` is the location of the `strfry-sync` configuration file.
 - `sync-strfry` is the location of the `strfry` executable.
 - `sync-strfry-log` is the location of the `strfry sync` command logs, it is a base filename.

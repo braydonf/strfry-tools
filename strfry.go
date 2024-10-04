@@ -29,14 +29,21 @@ type User struct {
 
 type Config struct {
 	LogLevel string `koanf:"log-level"`
-	PluginDown string `koanf:"router-plugin-down"`
-	PluginConfig string `koanf:"router-plugin-config"`
-	RouterConfig string `koanf:"router-config"`
+
+	RouterPluginDownBin string `koanf:"router-plugin-down-bin"`
+	RouterPluginConfig string `koanf:"router-plugin-down-config"`
+	RouterConfigBase string `koanf:"router-config-base"`
+
+	RoutersConfig string `koanf:"routers-config"`
+
 	SyncConfig string `koanf:"sync-config"`
 	SyncStatusFile string `koanf:"sync-status-file"`
-	StrFryLog string `koanf:"sync-strfry-log"`
-	StrFryBin string `koanf:"sync-strfry"`
-	StrFryConfig string `koanf:"sync-strfry-config"`
+	SyncStrFryLogBase string `koanf:"sync-strfry-log-base"`
+	SyncStrFryConfig string `koanf:"sync-strfry-config"`
+
+	StrFryBin string `koanf:"strfry-bin"`
+	StrFryConfig string `koanf:"strfry-config"`
+
 	DiscoveryRelays []string `koanf:"discovery-relays"`
 	Users []User `koanf:"users"`
 }
@@ -97,7 +104,7 @@ type SyncConfig struct {
 	LogLevel string `koanf:"log-level" json:"log-level"`
 	StrFryBin string `koanf:"strfry-bin" json:"strfry-bin"`
 	StrFryConfig string `koanf:"strfry-config" json:"strfry-config"`
-	StrFryLog string `koanf:"strfry-log" json:"strfry-log"`
+	StrFryLogBase string `koanf:"strfry-log-base" json:"strfry-log-base"`
 	StatusFile string `koanf:"status-file" json:"status-file"`
 	Users []*SyncUser `koanf:"users" json:"users"`
 	usersMap map[string]bool
@@ -225,7 +232,6 @@ type RouterStream struct {
 	Filter *Filter `json:"filter,omitempty"`
 	relaysMap map[string]bool
 	relaysMutex sync.RWMutex
-	pluginDown *DownPlugin
 }
 
 func NewRouterStream(dir string, pluginPath string) *RouterStream {
@@ -252,22 +258,6 @@ func (g *RouterStream) hasRelay(relay string) bool {
 	}
 }
 
-func (g *RouterStream) SetNewPlugin() {
-	g.pluginDown = NewDownPlugin()
-}
-
-func (g *RouterStream) SetPlugin(plugin *DownPlugin) {
-	g.pluginDown = plugin
-}
-
-func (g *RouterStream) GetPlugin() *DownPlugin {
-	return g.pluginDown
-}
-
-func (g *RouterStream) PluginAppendUniqueAuthor(pubkey string) {
-	g.pluginDown.AppendUniqueAuthor(pubkey)
-}
-
 func (g *RouterStream) AppendUniqueRelay(relay string) {
 	g.relaysMutex.Lock()
 	defer g.relaysMutex.Unlock()
@@ -276,7 +266,36 @@ func (g *RouterStream) AppendUniqueRelay(relay string) {
 	}
 }
 
-func (g *RouterStream) WritePluginConfig(path string) error {
+type Routers struct {
+	Configs map[string]*RouterConfig
+	Config *RoutersConfig
+	configsMutex sync.RWMutex
+	pluginDown *DownPlugin
+}
+
+func NewRouters() Routers {
+	routers := Routers{Configs: make(map[string]*RouterConfig)}
+	routers.SetNewPlugin()
+	return routers
+}
+
+func (g *Routers) SetNewPlugin() {
+	g.pluginDown = NewDownPlugin()
+}
+
+func (g *Routers) SetPlugin(plugin *DownPlugin) {
+	g.pluginDown = plugin
+}
+
+func (g *Routers) GetPlugin() *DownPlugin {
+	return g.pluginDown
+}
+
+func (g *Routers) PluginAppendUniqueAuthor(pubkey string) {
+	g.pluginDown.AppendUniqueAuthor(pubkey)
+}
+
+func (g *Routers) WritePluginConfig(path string) error {
 	conf, err := json.MarshalIndent(g.pluginDown, "", "  ")
 
 	if err != nil {
@@ -290,40 +309,56 @@ func (g *RouterStream) WritePluginConfig(path string) error {
 	return nil
 }
 
-type RouterConfig struct {
-	Streams map[string]*RouterStream `json:"streams"`
-	streamsMutex sync.RWMutex
+func (g *Routers) WriteConfig(path string) error {
+	conf, err := json.MarshalIndent(g.Config, "", "  ")
+
+	if err != nil {
+		return err
+	} else {
+		if err := os.WriteFile(path, conf, 0666); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func (g *RouterConfig) AddUser(
+func (g *Routers) AddUser(
 	cfg *Config,
 	user *User,
 	relays []string,
-	contacts []string) error {
+	contacts []string) {
 
-	g.streamsMutex.Lock()
-	defer g.streamsMutex.Unlock()
+	g.configsMutex.Lock()
+	defer g.configsMutex.Unlock()
+
+	if g.Configs[user.PubKey] == nil {
+		g.Configs[user.PubKey] = &RouterConfig{
+			Streams: make(map[string]*RouterStream),
+			filePath: fmt.Sprintf("%s-pk-%s.config", cfg.RouterConfigBase, user.PubKey),
+		}
+	}
+
+	router := g.Configs[user.PubKey]
 
 	dir := user.Direction
 
-	pluginConf := fmt.Sprintf("%s-pk-%s.json", cfg.PluginConfig, user.PubKey)
-	pluginCmd := fmt.Sprintf("%s --conf=%s", cfg.PluginDown, pluginConf)
+	pluginCmd := fmt.Sprintf("%s --conf=%s", cfg.RouterPluginDownBin, cfg.RouterPluginConfig)
 
 	streamIndex := 0
 	streamName := fmt.Sprintf("pk-%s-%d", user.PubKey, streamIndex)
 
 	if dir == "up" {
-		g.Streams[streamName] = NewRouterStream("up", "")
+		router.Streams[streamName] = NewRouterStream("up", "")
 	} else if dir == "down" || dir == "both" {
-		g.Streams[streamName] = NewRouterStream(dir, pluginCmd)
+		router.Streams[streamName] = NewRouterStream(dir, pluginCmd)
 	}
 
-	stream := g.Streams[streamName]
+	stream := router.Streams[streamName]
 
 	if dir == "down" || dir == "both" {
 		stream.Filter.AppendUniqueAuthor(user.PubKey)
-		stream.SetNewPlugin()
-		stream.PluginAppendUniqueAuthor(user.PubKey)
+		g.PluginAppendUniqueAuthor(user.PubKey)
 	}
 
 	for _, relay := range relays {
@@ -335,10 +370,8 @@ func (g *RouterConfig) AddUser(
 			if (index + 2) % FilterMaxAuthors == 0 {
 				streamIndex++
 				streamName = fmt.Sprintf("pk-%s-%d", user.PubKey, streamIndex)
-				pluginDown := stream.GetPlugin()
-				g.Streams[streamName] = NewRouterStream(dir, pluginCmd)
-				stream = g.Streams[streamName]
-				stream.SetPlugin(pluginDown)
+				router.Streams[streamName] = NewRouterStream(dir, pluginCmd)
+				stream = router.Streams[streamName]
 
 				for _, relay := range relays {
 					stream.AppendUniqueRelay(relay)
@@ -346,12 +379,36 @@ func (g *RouterConfig) AddUser(
 			}
 
 			stream.Filter.AppendUniqueAuthor(hex)
-			stream.PluginAppendUniqueAuthor(hex)
+			g.PluginAppendUniqueAuthor(hex)
+		}
+	}
+}
+
+type RoutersConfig struct {
+	LogLevel string `koanf:"log-level" json:"log-levl"`
+	ConfigBase string `koanf:"config-base" json:"config-base"`
+	StrFryBin string `koanf:"strfry-bin" json:"strfry-bin"`
+	StrFryConfig string `koanf:"strfry-config" json:"strfry-config"`
+}
+
+type RouterConfig struct {
+	Streams map[string]*RouterStream `json:"streams"`
+	filePath string
+	streamsMutex sync.RWMutex
+}
+
+func (g *RouterConfig) WriteFile() (string, error) {
+	conf, err := json.MarshalIndent(g, "", "  ")
+
+	if err != nil {
+		return "", err
+	} else {
+		if err := os.WriteFile(g.filePath, conf, 0644); err != nil {
+			return "", err
 		}
 	}
 
-	// Save the plugin configuration.
-	return stream.WritePluginConfig(pluginConf)
+	return g.filePath, nil
 }
 
 var (

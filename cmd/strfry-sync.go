@@ -141,7 +141,7 @@ func main() {
 
 				// Write each sync command to a different log file
 				// so that the logs are not in disorganized ordering.
-				logfilePath := fmt.Sprintf("%s-pk-%s.log", cfg.StrFryLog, user.PubKey)
+				logfilePath := fmt.Sprintf("%s-pk-%s.log", cfg.StrFryLogBase, user.PubKey)
 
 				logfile, err := os.Create(logfilePath)
 				if err != nil {
