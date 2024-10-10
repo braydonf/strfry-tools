@@ -225,7 +225,6 @@ type RouterStream struct {
 	Filter *Filter `json:"filter,omitempty"`
 	relaysMap map[string]bool
 	relaysMutex sync.RWMutex
-	pluginDown *DownPlugin
 }
 
 func NewRouterStream(dir string, pluginPath string) *RouterStream {
@@ -252,22 +251,6 @@ func (g *RouterStream) hasRelay(relay string) bool {
 	}
 }
 
-func (g *RouterStream) SetNewPlugin() {
-	g.pluginDown = NewDownPlugin()
-}
-
-func (g *RouterStream) SetPlugin(plugin *DownPlugin) {
-	g.pluginDown = plugin
-}
-
-func (g *RouterStream) GetPlugin() *DownPlugin {
-	return g.pluginDown
-}
-
-func (g *RouterStream) PluginAppendUniqueAuthor(pubkey string) {
-	g.pluginDown.AppendUniqueAuthor(pubkey)
-}
-
 func (g *RouterStream) AppendUniqueRelay(relay string) {
 	g.relaysMutex.Lock()
 	defer g.relaysMutex.Unlock()
@@ -276,7 +259,21 @@ func (g *RouterStream) AppendUniqueRelay(relay string) {
 	}
 }
 
-func (g *RouterStream) WritePluginConfig(path string) error {
+type RouterConfig struct {
+	Streams map[string]*RouterStream `json:"streams"`
+	Timeout string `json:"timeout"`
+	streamsMutex sync.RWMutex
+	pluginDown *DownPlugin
+}
+
+func (g *RouterConfig) PluginAppendUniqueAuthor(pubkey string) {
+	if g.pluginDown == nil {
+		g.pluginDown = NewDownPlugin()
+	}
+	g.pluginDown.AppendUniqueAuthor(pubkey)
+}
+
+func (g *RouterConfig) WritePluginConfig(path string) error {
 	conf, err := json.MarshalIndent(g.pluginDown, "", "  ")
 
 	if err != nil {
@@ -290,24 +287,18 @@ func (g *RouterStream) WritePluginConfig(path string) error {
 	return nil
 }
 
-type RouterConfig struct {
-	Streams map[string]*RouterStream `json:"streams"`
-	streamsMutex sync.RWMutex
-}
-
 func (g *RouterConfig) AddUser(
 	cfg *Config,
 	user *User,
 	relays []string,
-	contacts []string) error {
+	contacts []string) {
 
 	g.streamsMutex.Lock()
 	defer g.streamsMutex.Unlock()
 
 	dir := user.Direction
 
-	pluginConf := fmt.Sprintf("%s-pk-%s.json", cfg.PluginConfig, user.PubKey)
-	pluginCmd := fmt.Sprintf("%s --conf=%s", cfg.PluginDown, pluginConf)
+	pluginCmd := fmt.Sprintf("%s --conf=%s", cfg.PluginDown, cfg.PluginConfig)
 
 	streamIndex := 0
 	streamName := fmt.Sprintf("pk-%s-%d", user.PubKey, streamIndex)
@@ -322,36 +313,11 @@ func (g *RouterConfig) AddUser(
 
 	if dir == "down" || dir == "both" {
 		stream.Filter.AppendUniqueAuthor(user.PubKey)
-		stream.SetNewPlugin()
-		stream.PluginAppendUniqueAuthor(user.PubKey)
 	}
 
 	for _, relay := range relays {
 		stream.AppendUniqueRelay(relay)
 	}
-
-	for index, hex := range contacts {
-		if dir == "down" || dir == "both" {
-			if (index + 2) % FilterMaxAuthors == 0 {
-				streamIndex++
-				streamName = fmt.Sprintf("pk-%s-%d", user.PubKey, streamIndex)
-				pluginDown := stream.GetPlugin()
-				g.Streams[streamName] = NewRouterStream(dir, pluginCmd)
-				stream = g.Streams[streamName]
-				stream.SetPlugin(pluginDown)
-
-				for _, relay := range relays {
-					stream.AppendUniqueRelay(relay)
-				}
-			}
-
-			stream.Filter.AppendUniqueAuthor(hex)
-			stream.PluginAppendUniqueAuthor(hex)
-		}
-	}
-
-	// Save the plugin configuration.
-	return stream.WritePluginConfig(pluginConf)
 }
 
 var (

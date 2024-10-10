@@ -13,13 +13,13 @@ import (
 )
 
 type PluginConfig struct {
-	AuthorAllow []string `json:"author-allow"`
+	AuthorAllow []string `koanf:"author-allow" json:"author-allow"`
 }
 
 var (
 	k = koanf.New(".")
 	cfg PluginConfig
-	authorsAllowed map[string]struct{}
+	authorAllowed map[string]struct{}
 )
 
 func main() {
@@ -60,16 +60,16 @@ func LoadConfig(provider *file.File) {
 
 	k.Unmarshal("", &cfg)
 
-	authorsAllowed = make(map[string]struct{})
+	authorAllowed = make(map[string]struct{})
 
 	for _, pubkey := range cfg.AuthorAllow {
-		authorsAllowed[pubkey] = struct{}{}
+		authorAllowed[pubkey] = struct{}{}
 	}
 }
 
 func AuthorAllowFn() strfrui.SifterFunc {
 	return func(input *strfrui.Input) (*strfrui.Result, error) {
-		_, ok := authorsAllowed[input.Event.PubKey]
+		_, ok := authorAllowed[input.Event.PubKey]
 		if ok {
 			return input.Accept()
 		}

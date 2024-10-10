@@ -28,7 +28,7 @@ var (
 	cfg strfry.Config
 	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).With().Timestamp().Logger()
 
-	router strfry.RouterConfig
+	router = strfry.RouterConfig{Timeout: "300"}
 	syncer strfry.SyncConfig
 	counter strfry.ConcurrentCounter
 )
@@ -186,13 +186,12 @@ func getUsersInfo(
 
 			if len(userRelays) > 0 {
 				// Now add this user to the router.
-				err := router.AddUser(&cfg, &user, userRelays, contacts)
+				router.AddUser(&cfg, &user, userRelays, contacts)
+				log.Info().Str("pubkey", user.PubKey).Msg("added to router config")
 
-				if err != nil {
-					log.Warn().Err(err).Msg("error adding to stream")
-				} else {
-					log.Info().Str("pubkey", user.PubKey).Msg("added to router config")
-				}
+				// Now add this user to the plugin.
+				router.PluginAppendUniqueAuthor(user.PubKey)
+				log.Info().Str("pubkey", user.PubKey).Msg("added to plugin config")
 
 				// Add to the sync config.
 				syncer.AppendUniqueUser(&strfry.SyncUser{
@@ -237,7 +236,7 @@ func getUsersInfo(
 	wg.Wait()
 }
 
-func writeConfigFile() {
+func writeConfigFiles() {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
@@ -249,10 +248,17 @@ func writeConfigFile() {
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
 		} else {
-			log.Info().Str("file", cfg.RouterConfig).Msg("writing router config file")
 			if err := os.WriteFile(cfg.RouterConfig, conf, 0644); err != nil {
 				fmt.Errorf("write error: %s", err)
 			}
+			log.Info().Str("file", cfg.RouterConfig).Msg("wrote router config file")
+		}
+
+		err = router.WritePluginConfig(cfg.PluginConfig)
+		if err != nil {
+			fmt.Errorf("write error: %s", err)
+		} else {
+			log.Info().Str("file", cfg.PluginConfig).Msg("wrote plugin config file")
 		}
 
 		syncConf, err := json.MarshalIndent(syncer, "", "  ")
@@ -260,10 +266,10 @@ func writeConfigFile() {
 		if err != nil {
 			fmt.Errorf("marshal error: %s", err)
 		} else {
-			log.Info().Str("file", cfg.SyncConfig).Msg("writing sync config file")
 			if err := os.WriteFile(cfg.SyncConfig, syncConf, 0644); err != nil {
 				fmt.Errorf("write error: %s", err)
 			}
+			log.Info().Str("file", cfg.SyncConfig).Msg("wrote sync config file")
 		}
 	}()
 
@@ -327,7 +333,7 @@ func main() {
 		}
 
 		getUsersInfo(ctx, exited, cfg.Users, pool, cfg.DiscoveryRelays)
-		writeConfigFile()
+		writeConfigFiles()
 	}
 
 	updateUsers()
