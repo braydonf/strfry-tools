@@ -26,7 +26,19 @@ There are several output files:
 make
 cp strfry-config /usr/local/bin/strfry-config
 cp strfry-router-plugin /usr/local/bin/strfry-router-plugin
+cp sample-config.yml /etc/strfry-tools/config.yml
 ```
+
+Then edit the `config.yml` to have your pubkey and other settings. You will likely also need to create directories such as `/var/local/strfry-tools` or similar.
+
+You can also enable a service to keep it running:
+
+```bash
+cp scripts/strfry-config.service /etc/systemd/system/strfry-config.service
+```
+
+Then edit that script with your customizations and enable it with `systemctl enable strfr-config`.
+
 ### Configuration
 
 Example configuration (`sample-router.yml`):
