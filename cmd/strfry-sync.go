@@ -25,6 +25,7 @@ import (
 
 const (
 	SyncCommandTimeout = 20*time.Second
+	SyncInterval = 6*time.Hour
 )
 
 type RelayStatus struct {
@@ -264,6 +265,10 @@ func main() {
 	userwg.Wait()
 
 	log.Info().Msg("sync complete")
+
+	log.Info().Str("time", SyncInterval.String()).Msg("waiting to exit...")
+
+	time.Sleep(SyncInterval)
 }
 
 func SetLogLevel(lvl string) {

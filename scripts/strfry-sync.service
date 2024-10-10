@@ -6,14 +6,14 @@ After=network-online.target
 [Service]
 User=strfry
 Group=strfry
-ExecStart = /usr/local/bin/strfry-sync --conf=/etc/strfry-tools/sync-config.json
+ExecStart = /usr/local/bin/strfry-sync --conf=/var/local/strfry-tools/sync.json
 
 PermissionsStartOnly=true
 ExecStartPre=/bin/chgrp strfry /etc/strfry-tools
 
 PIDFile=/run/strfry-tools/strfry-sync.pid
 
-Restart=on-failure
+Restart=on-success
 
 # Hardening measures
 ####################

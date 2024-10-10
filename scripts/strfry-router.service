@@ -6,7 +6,7 @@ After=network-online.target
 [Service]
 User=strfry
 Group=strfry
-ExecStart = /usr/local/bin/strfry router --conf=/etc/strfry-tools/router.config
+ExecStart = /usr/local/bin/strfry router /var/local/strfry-tools/router.config
 
 PermissionsStartOnly=true
 ExecStartPre=/bin/chgrp strfry /etc/strfry-tools
