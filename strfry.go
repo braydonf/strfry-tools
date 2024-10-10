@@ -29,8 +29,8 @@ type User struct {
 
 type Config struct {
 	LogLevel string `koanf:"log-level"`
-	PluginDown string `koanf:"router-plugin-down"`
-	PluginConfig string `koanf:"router-plugin-config"`
+	PluginDown string `koanf:"plugin-down"`
+	PluginConfig string `koanf:"plugin-config"`
 	RouterConfig string `koanf:"router-config"`
 	SyncConfig string `koanf:"sync-config"`
 	SyncStatusFile string `koanf:"sync-status-file"`

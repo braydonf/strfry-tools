@@ -2,8 +2,5 @@
 config.yml
 write.yml
 strfry-sync
-strfry-router-plugin.json
-strfry-router.config
 strfry-config
-strfry-router-plugin
-strfry-write-plugin
+strfry-down-plugin

@@ -4,8 +4,8 @@ discovery-relays:
   - "wss://domain1.tld"
   - "wss://domian2.tld"
 
-router-plugin-down: "/usr/local/bin/strfry-router-plugin"
-router-plugin-config: "/var/local/strfry/router-plugin"
+plugin-down: "/usr/local/bin/strfry-down-plugin"
+plugin-config: "/var/local/strfry/down-plugin.json"
 router-config: "/var/local/strfry/router.config"
 sync-config: "/var/local/strfry/sync.json"
 sync-strfry: "/usr/local/bin/strfry"
