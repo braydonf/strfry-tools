@@ -17,6 +17,7 @@ const (
 	FilterMaxAuthors = 950
 	MaxConcurrentReqs = 10
 	MaxConcurrentSyncs = 10
+	DefaultRouterTimeout = "600"
 )
 
 type User struct {
@@ -31,6 +32,7 @@ type Config struct {
 	LogLevel string `koanf:"log-level"`
 	PluginDown string `koanf:"plugin-down"`
 	PluginConfig string `koanf:"plugin-config"`
+	RouterTimeout string `koanf:"router-timeout"`
 	RouterConfig string `koanf:"router-config"`
 	SyncConfig string `koanf:"sync-config"`
 	SyncStatusFile string `koanf:"sync-status-file"`

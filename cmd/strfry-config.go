@@ -28,7 +28,7 @@ var (
 	cfg strfry.Config
 	log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).With().Timestamp().Logger()
 
-	router = strfry.RouterConfig{Timeout: "300"}
+	router = strfry.RouterConfig{Timeout: strfry.DefaultRouterTimeout}
 	syncer strfry.SyncConfig
 	counter strfry.ConcurrentCounter
 )
@@ -314,6 +314,9 @@ func main() {
 	syncer.StrFryConfig = cfg.StrFryConfig
 	syncer.StatusFile = cfg.SyncStatusFile
 	syncer.StrFryLog = cfg.StrFryLog
+
+	// And the timeout value for the router.
+	router.Timeout = cfg.RouterTimeout
 
 	updateUsers := func() {
 		ctx, cancel := context.WithCancel(ctx)

@@ -54,6 +54,7 @@ discovery-relays:
 plugin-down: "/usr/bin/local/strfry-router-plugin"
 plugin-config: "/var/local/strfry-tools/router-plugin"
 router-config: "/var/local/strfry-tools/router.config"
+router-timeout: "600"
 sync-config: "/var/local/strfry-tools/sync.json"
 sync-strfry: "/usr/bin/local/strfry"
 sync-strfry-log: "/var/local/strfry-tools/logs/sync"
@@ -74,6 +75,7 @@ Main options:
 - `plugin-down` defines the location of the `strfry-down-plugin` executable for a `strfry router` and `strfry relay`.
 - `plugin-config` defines the configuration base path for the `strfry router` plugin and `strfry relay`.
 - `router-config` is the location of the `strfry router` configuration.
+- `router-timeout` the timeout for a stream connection in `strfry router`.
 - `sync-config` is the location of the `strfry-sync` configuration file.
 - `sync-strfry` is the location of the `strfry` executable.
 - `sync-strfry-log` is the location of the `strfry sync` command logs, it is a base filename.
