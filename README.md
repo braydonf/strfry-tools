@@ -6,10 +6,9 @@ A set of tools for [strfry](https://github.com/hoytech/strfry) relays for the [N
 
 Included programs and plugins:
 
-- `strfry-config` This will auto generate configs for a `stryfry router` and for `strfry-sync` based on user pubkeys for streaming and syncing a network of contacts.
+- `strfry-config` This will auto generate configs for a `stryfry router`, `strfry relay` and `strfry-sync` based on user pubkeys for streaming and syncing a network of contacts.
 - `strfry-sync` This will sync a network of contacts using `negentropy` with `strfry sync`.
-- `strfry-router-plugin` This is a write policy plugin for `stryfry router` to only allow specific event authors.
-- `strfry-write-plugin` This is a standalone write policy plugin for a `strfry relay`.
+- `strfry-down-plugin` This is a write policy plugin for `stryfry router` and `strfry relay` to only allow specific event authors.
 
 ## StrFry Config
 
@@ -17,21 +16,22 @@ This program (`strfry-config`) creates configuration files based on a set of con
 
 There are several output files:
 
-- A config file for a `strfry router` to have user specific relay-to-relay topology, this also includes many config files for `strfry router` write policy plugins.
+- A config file for a `strfry router` to have user specific relay-to-relay topology.
 - A config for `strfry-sync` that uses `negentropy` to sync notes for complete and bandwidth efficient synchronization.
+- A plugin config file for `strfry router` and `strfry relay` to only allow a set of pubkeys to write events.
 
 ### Build & Install
 
 ```bash
 make
 cp strfry-config /usr/local/bin/strfry-config
-cp strfry-router-plugin /usr/local/bin/strfry-router-plugin
+cp strfry-down-plugin /usr/local/bin/strfry-down-plugin
 cp sample-config.yml /etc/strfry-tools/config.yml
 ```
 
 Then edit the `config.yml` to have your pubkey and other settings. You will likely also need to create directories such as `/var/local/strfry-tools` or similar.
 
-You can also enable a service to keep it running:
+You can also enable a service to keep it running, this will also include `strfry router`.
 
 ```bash
 cp scripts/strfry-config.service /etc/systemd/system/strfry-config.service
