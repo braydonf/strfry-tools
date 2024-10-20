@@ -263,7 +263,7 @@ func (g *RouterStream) AppendUniqueRelay(relay string) {
 
 type RouterConfig struct {
 	Streams map[string]*RouterStream `json:"streams"`
-	Timeout string `json:"timeout"`
+	Timeout string `json:"connectionTimeout"`
 	streamsMutex sync.RWMutex
 	pluginDown *DownPlugin
 }
